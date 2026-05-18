@@ -2,25 +2,60 @@ import AppKit
 import SwiftUI
 import Combine
 
-// Custom root view that only hit-tests within the pill, letting clicks fall through
-// to windows underneath everywhere else.
+// Root NSView that passes clicks through to windows below for anything
+// outside the island rect, and fires hover events for haptic feedback.
 final class PillHitTestView: NSView {
     var viewModel: IslandViewModel?
+    private var trackingArea: NSTrackingArea?
 
     override func hitTest(_ point: NSPoint) -> NSView? {
         guard let vm = viewModel else { return nil }
-        // pillRectInWindow is in NSView coords (origin bottom-left)
         guard vm.pillRectInWindow.contains(point) else { return nil }
         return super.hitTest(point)
     }
 
-    // Needed so our NSPanel level actually places us above the menu bar
     override var isOpaque: Bool { false }
+
+    // Called whenever the view hierarchy changes — keeps the tracking rect tight
+    // to the current island size so hover fires right at the notch edge.
+    override func updateTrackingAreas() {
+        super.updateTrackingAreas()
+        if let old = trackingArea { removeTrackingArea(old) }
+        guard let vm = viewModel else { return }
+        let area = NSTrackingArea(
+            rect: vm.pillRectInWindow,
+            options: [.mouseEnteredAndExited, .activeAlways],
+            owner: self,
+            userInfo: nil
+        )
+        addTrackingArea(area)
+        trackingArea = area
+    }
+
+    override func mouseEntered(with event: NSEvent) {
+        // .alignment = the subtle "snap" haptic — feels like finding an edge
+        NSHapticFeedbackManager.defaultPerformer.perform(
+            .alignment, performanceTime: .default
+        )
+        Task { @MainActor [weak self] in
+            withAnimation(IslandViewModel.hoverSpring) {
+                self?.viewModel?.isHovering = true
+            }
+        }
+    }
+
+    override func mouseExited(with event: NSEvent) {
+        Task { @MainActor [weak self] in
+            withAnimation(IslandViewModel.hoverSpring) {
+                self?.viewModel?.isHovering = false
+            }
+        }
+    }
 }
 
 final class NotchPanel: NSPanel {
     private var hitTestView: PillHitTestView?
-    private var cancellable: AnyCancellable?
+    private var stateCancellable: AnyCancellable?
 
     init(viewModel: IslandViewModel) {
         let screen = NSScreen.main ?? NSScreen.screens[0]
@@ -34,33 +69,35 @@ final class NotchPanel: NSPanel {
             defer: false
         )
 
-        // Level 26 = one above NSWindow.Level.statusBar (25) — sits above menu bar
-        level                   = NSWindow.Level(rawValue: NSWindow.Level.statusBar.rawValue + 1)
-        backgroundColor         = .clear
-        isOpaque                = false
-        hasShadow               = false
-        collectionBehavior      = [.canJoinAllSpaces, .fullScreenAuxiliary, .ignoresCycle]
+        // Level 26 = statusBar (25) + 1 → floats above the menu bar
+        level                       = NSWindow.Level(rawValue: NSWindow.Level.statusBar.rawValue + 1)
+        backgroundColor             = .clear
+        isOpaque                    = false
+        hasShadow                   = false
+        collectionBehavior          = [.canJoinAllSpaces, .fullScreenAuxiliary, .ignoresCycle]
         isMovableByWindowBackground = false
-        isReleasedWhenClosed    = false
+        isReleasedWhenClosed        = false
 
-        let rootView = PillHitTestView(frame: NSRect(x: 0, y: 0, width: kWindowWidth, height: kWindowHeight))
-        rootView.viewModel = viewModel
-        hitTestView = rootView
+        let root = PillHitTestView(frame: NSRect(x: 0, y: 0, width: kWindowWidth, height: kWindowHeight))
+        root.viewModel = viewModel
+        hitTestView    = root
 
         let hosting = NSHostingView(rootView: IslandView(viewModel: viewModel))
-        hosting.frame = rootView.bounds
-        hosting.autoresizingMask = [.width, .height]
+        hosting.frame              = root.bounds
+        hosting.autoresizingMask   = [.width, .height]
         hosting.layer?.backgroundColor = .clear
-        rootView.addSubview(hosting)
-        contentView = rootView
+        root.addSubview(hosting)
+        contentView = root
 
-        // Refresh hit-test rect when pill size changes
-        cancellable = viewModel.$state
+        // Refresh tracking area whenever the island size changes
+        stateCancellable = viewModel.$state
             .receive(on: RunLoop.main)
-            .sink { [weak rootView] _ in rootView?.needsDisplay = true }
+            .sink { [weak root] _ in
+                root?.updateTrackingAreas()
+                root?.needsDisplay = true
+            }
     }
 
-    // Allow key events (so buttons inside respond to keyboard) but don't steal main status
-    override var canBecomeKey: Bool { true }
+    override var canBecomeKey: Bool  { true  }
     override var canBecomeMain: Bool { false }
 }

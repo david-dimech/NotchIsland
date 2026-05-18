@@ -1,3 +1,4 @@
+import AppKit
 import SwiftUI
 import Combine
 
@@ -6,15 +7,18 @@ class IslandViewModel: ObservableObject {
     static let shared = IslandViewModel()
 
     @Published var state: IslandState = .compact
-    @Published var nowPlaying = NowPlayingInfo()
-    @Published var systemStats = SystemStats()
-    @Published var timerState = TimerState()
+    @Published var isHovering: Bool   = false
+    @Published var nowPlaying         = NowPlayingInfo()
+    @Published var systemStats        = SystemStats()
+    @Published var timerState         = TimerState()
 
-    let nowPlayingManager = NowPlayingManager()
+    let nowPlayingManager  = NowPlayingManager()
     let systemStatsManager = SystemStatsManager()
+    let contextManager     = ContextManager()
 
-    private var cancellables = Set<AnyCancellable>()
-    private var countdownTimer: AnyCancellable?
+    private var cancellables     = Set<AnyCancellable>()
+    private var countdownTimer:  AnyCancellable?
+    private var mouseMonitor:    Any?
 
     init() {
         nowPlayingManager.$info
@@ -26,20 +30,35 @@ class IslandViewModel: ObservableObject {
             .receive(on: RunLoop.main)
             .assign(to: \.systemStats, on: self)
             .store(in: &cancellables)
+
+        // Auto-expand to now-playing when a track starts
+        nowPlayingManager.$info
+            .map(\.isPlaying)
+            .removeDuplicates()
+            .filter { $0 }
+            .receive(on: RunLoop.main)
+            .sink { [weak self] _ in
+                guard let self, case .compact = self.state else { return }
+                self.expand(to: .nowPlaying)
+            }
+            .store(in: &cancellables)
     }
 
     // MARK: – Island state
 
+    // Slight overshoot on expand for organic feel; crisp snap on collapse.
+    private static let expandSpring   = Animation.interpolatingSpring(mass: 1, stiffness: 160, damping: 18)
+    private static let collapseSpring = Animation.interpolatingSpring(mass: 1, stiffness: 260, damping: 28)
+    static let hoverSpring            = Animation.interpolatingSpring(mass: 1, stiffness: 320, damping: 24)
+
     func expand(to module: IslandModule) {
-        withAnimation(.spring(response: 0.4, dampingFraction: 0.75)) {
-            state = .expanded(module)
-        }
+        withAnimation(Self.expandSpring) { state = .expanded(module) }
+        startClickOutsideMonitor()
     }
 
     func collapse() {
-        withAnimation(.spring(response: 0.3, dampingFraction: 0.85)) {
-            state = .compact
-        }
+        withAnimation(Self.collapseSpring) { state = .compact }
+        stopClickOutsideMonitor()
     }
 
     func toggle(_ module: IslandModule) {
@@ -49,8 +68,34 @@ class IslandViewModel: ObservableObject {
         case .expanded(let current) where current == module:
             collapse()
         case .expanded:
-            expand(to: module)
+            withAnimation(Self.expandSpring) { state = .expanded(module) }
         }
+    }
+
+    // MARK: – Click-outside to collapse
+
+    private func startClickOutsideMonitor() {
+        stopClickOutsideMonitor()
+        // Global mouse-down monitor (mouse events don't require Accessibility permission)
+        mouseMonitor = NSEvent.addGlobalMonitorForEvents(matching: .leftMouseDown) { [weak self] _ in
+            guard let self else { return }
+            let cursor  = NSEvent.mouseLocation
+            let screen  = NSScreen.main ?? NSScreen.screens[0]
+            let w = self.islandWidth
+            let h = self.islandHeight
+            let islandRect = CGRect(
+                x: screen.frame.midX - w / 2,
+                y: screen.frame.maxY - h,
+                width: w, height: h
+            )
+            if !islandRect.contains(cursor) {
+                Task { @MainActor [weak self] in self?.collapse() }
+            }
+        }
+    }
+
+    private func stopClickOutsideMonitor() {
+        if let m = mouseMonitor { NSEvent.removeMonitor(m); mouseMonitor = nil }
     }
 
     // MARK: – Now Playing controls
@@ -88,46 +133,36 @@ class IslandViewModel: ObservableObject {
 
     func setTimerDuration(minutes: Int) {
         pauseTimer()
-        timerState.duration = TimeInterval(minutes * 60)
+        timerState.duration  = TimeInterval(minutes * 60)
         timerState.remaining = timerState.duration
     }
 
     private func timerFinished() {
         pauseTimer()
         timerState.remaining = 0
-        // Switch between work / break rounds
-        if timerState.isBreak {
-            timerState.isBreak = false
-            timerState.duration = 25 * 60
-        } else {
-            timerState.isBreak = true
-            timerState.duration = 5 * 60
-        }
+        timerState.isBreak   = !timerState.isBreak
+        timerState.duration  = timerState.isBreak ? 5 * 60 : 25 * 60
         timerState.remaining = timerState.duration
-        // Bounce the island open to signal the user
         expand(to: .timer)
     }
 
-    // MARK: – Pill geometry (used by click-through view)
+    // MARK: – Island geometry
 
-    var pillWidth: CGFloat {
-        switch state {
-        case .compact:        return kPillCompactWidth
-        case .expanded:       return kPillExpandedWidth
-        }
+    var islandWidth: CGFloat {
+        state.isExpanded ? kIslandExpandedWidth : kNotchWidth
     }
 
-    var pillHeight: CGFloat {
-        switch state {
-        case .compact:        return kPillCompactHeight
-        case .expanded:       return kPillExpandedHeight
-        }
+    var islandHeight: CGFloat {
+        state.isExpanded ? kIslandExpandedHeight : kNotchHeight
     }
 
-    /// Pill rect in NSView coordinate space (origin bottom-left, window size kWindowWidth x kWindowHeight)
+    // Hit-test rect in NSView coords (origin bottom-left).
+    // Expand slightly so hovering near the notch edge still registers.
     var pillRectInWindow: CGRect {
-        let x = (kWindowWidth - pillWidth) / 2
-        let y = kWindowHeight - pillHeight
-        return CGRect(x: x, y: y, width: pillWidth, height: pillHeight)
+        let w = islandWidth  + (state.isExpanded ? 0 : 20)
+        let h = islandHeight + (state.isExpanded ? 0 : 10)
+        let x = (kWindowWidth - w) / 2
+        let y = kWindowHeight - h
+        return CGRect(x: x, y: y, width: w, height: h)
     }
 }
