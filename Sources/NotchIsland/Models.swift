@@ -59,10 +59,23 @@ enum IslandState: Equatable {
     }
 }
 
-// Compact pill dimensions matching a 14/16" MacBook Pro notch area
-let kPillCompactWidth: CGFloat  = 126
-let kPillCompactHeight: CGFloat = 34
-let kPillExpandedWidth: CGFloat = 400
-let kPillExpandedHeight: CGFloat = 130
+// Notch-anchored island dimensions
+// Compact matches the physical MacBook Pro notch (~250×38 pt).
+// The rounded rect uses a fixed corner radius instead of a capsule shape
+// so it reads as an extension of the notch, not a floating pill.
+let kNotchWidth: CGFloat        = 250   // compact — aligns with physical notch
+let kNotchHeight: CGFloat       = 38
+let kIslandExpandedWidth: CGFloat  = 380
+let kIslandExpandedHeight: CGFloat = 142
+let kIslandCornerRadius: CGFloat   = 14  // fixed, not height/2
+
+// Hover inflate factor (visual only, hit-test rect stays at base)
+let kHoverScale: CGFloat = 1.08
+
+// Legacy aliases kept so manager / view code compiles during refactor
+let kPillCompactWidth  = kNotchWidth
+let kPillCompactHeight = kNotchHeight
+let kPillExpandedWidth  = kIslandExpandedWidth
+let kPillExpandedHeight = kIslandExpandedHeight
 let kWindowWidth: CGFloat  = 600
-let kWindowHeight: CGFloat = 200
+let kWindowHeight: CGFloat = 220
