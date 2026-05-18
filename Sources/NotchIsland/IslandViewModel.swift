@@ -16,6 +16,9 @@ class IslandViewModel: ObservableObject {
     let systemStatsManager = SystemStatsManager()
     let contextManager     = ContextManager()
 
+    // Set by ExpandedIslandView to receive swipe events forwarded from PillHitTestView
+    var onSwipeEvent: ((CGFloat, NSEvent.Phase) -> Void)?
+
     private var cancellables     = Set<AnyCancellable>()
     private var countdownTimer:  AnyCancellable?
     private var mouseMonitor:    Any?

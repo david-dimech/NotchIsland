@@ -4,12 +4,16 @@ struct ExpandedIslandView: View {
     let module: IslandModule
     @ObservedObject var viewModel: IslandViewModel
 
-    @State private var moduleIndex: Int = 0
+    @State private var moduleIndex: Int  = 0
     @State private var dragOffset: CGFloat = 0
-    @State private var lastEventDeltaX: CGFloat = 0   // used for velocity-based snap
+    @State private var lastDeltaX: CGFloat = 0
 
     private let modules: [IslandModule] = [.nowPlaying, .systemStats, .timer]
-    private let snapSpring = Animation.interpolatingSpring(mass: 1, stiffness: 420, damping: 36)
+
+    // Crisp spring for page snapping — feels like a card flicking into place
+    private let snapSpring = Animation.interpolatingSpring(
+        mass: 1, stiffness: 500, damping: 40
+    )
 
     var body: some View {
         VStack(spacing: 0) {
@@ -20,31 +24,35 @@ struct ExpandedIslandView: View {
             Divider().background(Color.white.opacity(0.08))
 
             GeometryReader { geo in
-                // All modules live in a single HStack; we slide it left/right.
+                let w = geo.size.width
+
                 HStack(spacing: 0) {
                     ForEach(Array(modules.enumerated()), id: \.offset) { i, mod in
                         moduleView(mod)
-                            .frame(width: geo.size.width, height: geo.size.height)
+                            .frame(width: w, height: geo.size.height)
                     }
                 }
-                // Animate only on index snap; drag offset updates are direct/instant.
-                .offset(x: -CGFloat(moduleIndex) * geo.size.width + dragOffset)
-                .animation(snapSpring, value: moduleIndex)
-                .background(
-                    TrackpadScrollReader { deltaX, phase in
-                        handleScroll(deltaX: deltaX, phase: phase, width: geo.size.width)
-                    }
-                )
+                // Offset has NO .animation modifier — all animation is driven
+                // explicitly via withAnimation so drag is instant and snap springs.
+                .offset(x: -CGFloat(moduleIndex) * w + dragOffset)
             }
             .clipped()
             .padding(.horizontal, 2)
             .padding(.bottom, 4)
         }
-        .onAppear { moduleIndex = modules.firstIndex(of: module) ?? 0 }
-        .onChange(of: module) { _, m in
-            if let i = modules.firstIndex(of: m), i != moduleIndex {
-                withAnimation(snapSpring) { moduleIndex = i }
+        .onAppear {
+            moduleIndex = modules.firstIndex(of: module) ?? 0
+            // Register swipe handler — PillHitTestView (root NSView) delivers events here
+            viewModel.onSwipeEvent = { [self] deltaX, phase in
+                handleSwipe(deltaX: deltaX, phase: phase)
             }
+        }
+        .onDisappear {
+            viewModel.onSwipeEvent = nil
+        }
+        .onChange(of: module) { _, m in
+            guard let i = modules.firstIndex(of: m), i != moduleIndex else { return }
+            withAnimation(snapSpring) { moduleIndex = i }
         }
     }
 
@@ -54,23 +62,22 @@ struct ExpandedIslandView: View {
         HStack(spacing: 5) {
             ForEach(0..<modules.count, id: \.self) { i in
                 if i == moduleIndex {
-                    // Active: wide capsule
                     Capsule()
                         .fill(Color.white)
                         .frame(width: 18, height: 5)
                 } else {
-                    // Inactive: small circle, tap to jump
                     Circle()
                         .fill(Color.white.opacity(0.28))
                         .frame(width: 5, height: 5)
+                        .contentShape(Circle())
                         .onTapGesture { switchTo(i) }
                 }
             }
         }
-        .animation(.easeInOut(duration: 0.2), value: moduleIndex)
+        .animation(.easeInOut(duration: 0.18), value: moduleIndex)
     }
 
-    // MARK: – Module content
+    // MARK: – Module views
 
     @ViewBuilder
     private func moduleView(_ mod: IslandModule) -> some View {
@@ -81,51 +88,50 @@ struct ExpandedIslandView: View {
         }
     }
 
-    // MARK: – Swipe
+    // MARK: – Swipe handler (called from PillHitTestView via viewModel.onSwipeEvent)
 
-    private func switchTo(_ index: Int) {
-        let i = max(0, min(index, modules.count - 1))
-        withAnimation(snapSpring) { moduleIndex = i }
-        // Expand to the new module so the ViewModel stays in sync
-        viewModel.expand(to: modules[i])
-    }
-
-    private func handleScroll(deltaX: CGFloat, phase: NSEvent.Phase, width: CGFloat) {
+    private func handleSwipe(deltaX: CGFloat, phase: NSEvent.Phase) {
         switch phase {
 
-        case .changed:
-            // *** Direct, no-animation update so the content follows the finger 1:1 ***
-            // Rubber-band resistance at the ends so you feel the boundary.
-            let atStart = moduleIndex == 0               && dragOffset > 0
-            let atEnd   = moduleIndex == modules.count - 1 && dragOffset < 0
-            let rubber: CGFloat = (atStart || atEnd) ? 0.15 : 1.0
-            dragOffset += deltaX * rubber
-            lastEventDeltaX = deltaX
+        case .began, .changed:
+            // Direct 1:1 tracking — no animation so finger and content move together.
+            // Rubber-band resistance at the first/last page boundary.
+            let pastStart = moduleIndex == 0               && dragOffset > 0
+            let pastEnd   = moduleIndex == modules.count - 1 && dragOffset < 0
+            let factor: CGFloat = (pastStart || pastEnd) ? 0.12 : 1.0
+            dragOffset += deltaX * factor
+            lastDeltaX  = deltaX
 
         case .ended, .cancelled:
-            // A "quick flick" (last event had large velocity) triggers the page
-            // change even if the accumulated offset is small.
-            let isFlick     = abs(lastEventDeltaX) > 4
-            let threshold   = isFlick ? 12 : width * 0.2
+            let oldIndex = moduleIndex   // capture BEFORE any mutation
 
-            let oldIndex = moduleIndex           // save BEFORE mutating
+            // A flick (fast last-event velocity) triggers a page change even with
+            // minimal total travel. Threshold shrinks to 8 pt for flicks.
+            let isFlick   = abs(lastDeltaX) > 3
+            let threshold: CGFloat = isFlick ? 8 : 44
+
             var next = oldIndex
             if dragOffset < -threshold, oldIndex < modules.count - 1 { next = oldIndex + 1 }
             if dragOffset >  threshold, oldIndex > 0                  { next = oldIndex - 1 }
 
+            // Single withAnimation covers BOTH the page-switch and the drag reset,
+            // so they spring to the target together rather than jumping.
             withAnimation(snapSpring) {
                 moduleIndex = next
                 dragOffset  = 0
             }
-            lastEventDeltaX = 0
+            lastDeltaX = 0
 
-            // Sync viewModel only when the module actually changed
-            if next != oldIndex {
-                viewModel.expand(to: modules[next])
-            }
+            if next != oldIndex { viewModel.expand(to: modules[next]) }
 
         default:
             break
         }
+    }
+
+    private func switchTo(_ index: Int) {
+        let i = max(0, min(index, modules.count - 1))
+        withAnimation(snapSpring) { moduleIndex = i }
+        viewModel.expand(to: modules[i])
     }
 }

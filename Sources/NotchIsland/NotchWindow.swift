@@ -2,11 +2,14 @@ import AppKit
 import SwiftUI
 import Combine
 
-// Root NSView that passes clicks through to windows below for anything
-// outside the island rect, and fires hover events for haptic feedback.
+// Root NSView — handles hit testing, hover haptics, and scroll interception.
+// It sits at the top of the responder chain so scroll events over the island
+// always reach it, regardless of what SwiftUI content is rendered inside.
 final class PillHitTestView: NSView {
     var viewModel: IslandViewModel?
     private var trackingArea: NSTrackingArea?
+
+    // MARK: – Hit testing (click-through outside pill)
 
     override func hitTest(_ point: NSPoint) -> NSView? {
         guard let vm = viewModel else { return nil }
@@ -16,8 +19,8 @@ final class PillHitTestView: NSView {
 
     override var isOpaque: Bool { false }
 
-    // Called whenever the view hierarchy changes — keeps the tracking rect tight
-    // to the current island size so hover fires right at the notch edge.
+    // MARK: – Hover tracking
+
     override func updateTrackingAreas() {
         super.updateTrackingAreas()
         if let old = trackingArea { removeTrackingArea(old) }
@@ -33,22 +36,65 @@ final class PillHitTestView: NSView {
     }
 
     override func mouseEntered(with event: NSEvent) {
-        // .alignment = the subtle "snap" haptic — feels like finding an edge
-        NSHapticFeedbackManager.defaultPerformer.perform(
-            .alignment, performanceTime: .default
-        )
-        Task { @MainActor [weak self] in
+        // Haptic only when compact — island is already open, no need to signal
+        if case .compact = viewModel?.state {
+            NSHapticFeedbackManager.defaultPerformer.perform(
+                .alignment, performanceTime: .default
+            )
+        }
+        MainActor.assumeIsolated {
             withAnimation(IslandViewModel.hoverSpring) {
-                self?.viewModel?.isHovering = true
+                viewModel?.isHovering = true
             }
         }
     }
 
     override func mouseExited(with event: NSEvent) {
-        Task { @MainActor [weak self] in
+        MainActor.assumeIsolated {
             withAnimation(IslandViewModel.hoverSpring) {
-                self?.viewModel?.isHovering = false
+                viewModel?.isHovering = false
             }
+        }
+    }
+
+    // MARK: – Scroll / swipe interception
+
+    // scrollWheel is called on the main thread by AppKit for any scroll event
+    // whose hit-test lands within our window. By overriding here (the root NSView)
+    // we catch events before NSHostingView can consume them, giving us reliable
+    // 2-finger swipe tracking without NSViewRepresentable hacks.
+    override func scrollWheel(with event: NSEvent) {
+        guard let vm = viewModel, case .expanded = vm.state else {
+            super.scrollWheel(with: event)
+            return
+        }
+
+        // Ignore momentum phase (system coasting after finger lift)
+        guard event.momentumPhase.isEmpty else { return }
+
+        let phase = event.phase
+
+        // Always forward end/cancel so the view can snap, even when deltas are ~0
+        if phase == .ended || phase == .cancelled {
+            MainActor.assumeIsolated { vm.onSwipeEvent?(0, phase) }
+            return
+        }
+
+        // Trackpad-only (hasPreciseScrollingDeltas == false for physical mouse wheel)
+        guard event.hasPreciseScrollingDeltas else {
+            super.scrollWheel(with: event)
+            return
+        }
+
+        // Only handle gestures that are more horizontal than vertical
+        guard abs(event.scrollingDeltaX) > abs(event.scrollingDeltaY) else {
+            super.scrollWheel(with: event)
+            return
+        }
+
+        if phase == .began || phase == .changed {
+            MainActor.assumeIsolated { vm.onSwipeEvent?(event.scrollingDeltaX, phase) }
+            // Don't call super — event is consumed by the island
         }
     }
 }
@@ -69,7 +115,6 @@ final class NotchPanel: NSPanel {
             defer: false
         )
 
-        // Level 26 = statusBar (25) + 1 → floats above the menu bar
         level                       = NSWindow.Level(rawValue: NSWindow.Level.statusBar.rawValue + 1)
         backgroundColor             = .clear
         isOpaque                    = false
@@ -89,7 +134,6 @@ final class NotchPanel: NSPanel {
         root.addSubview(hosting)
         contentView = root
 
-        // Refresh tracking area whenever the island size changes
         stateCancellable = viewModel.$state
             .receive(on: RunLoop.main)
             .sink { [weak root] _ in
