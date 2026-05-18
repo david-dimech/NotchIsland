@@ -40,6 +40,11 @@ class ContextManager: ObservableObject {
            id.contains("ffmpeg")     ||
            id.contains("resolve")    { return .systemStats }
 
+        // Calendar apps → show calendar
+        if id.contains("calendar") ||
+           id.contains("fantastical") ||
+           id.contains("busycal")   { return .calendar }
+
         // Productivity / focus → show timer
         if id.contains("notion")   ||
            id.contains("obsidian") ||

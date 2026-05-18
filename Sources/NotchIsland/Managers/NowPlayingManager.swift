@@ -16,15 +16,22 @@ class NowPlayingManager: ObservableObject {
 
     private let mrHandle: UnsafeMutableRawPointer?
 
+    // Progress interpolation — updated every 0.5 s while playing
+    private var progressTimer: Timer?
+    private var fetchDate:     Date         = .distantPast
+    private var elapsedAtFetch: TimeInterval = 0
+
     init() {
         mrHandle = dlopen("/System/Library/PrivateFrameworks/MediaRemote.framework/MediaRemote", RTLD_NOW)
         loadSymbols()
         observeNotifications()
         fetchInfo()
+        startProgressTimer()
     }
 
     deinit {
         DistributedNotificationCenter.default().removeObserver(self)
+        progressTimer?.invalidate()
         if let h = mrHandle { dlclose(h) }
     }
 
@@ -73,9 +80,25 @@ class NowPlayingManager: ObservableObject {
             }
             self.getPlaying?(.main) { isPlaying in
                 next.isPlaying = isPlaying
-                DispatchQueue.main.async { self.info = next }
+                DispatchQueue.main.async {
+                    self.elapsedAtFetch = next.elapsed
+                    self.fetchDate      = Date()
+                    self.info = next
+                }
             }
         }
+    }
+
+    // MARK: – Progress interpolation
+
+    private func startProgressTimer() {
+        let t = Timer(timeInterval: 0.5, repeats: true) { [weak self] _ in
+            guard let self, self.info.isPlaying, self.info.duration > 0 else { return }
+            let interpolated = self.elapsedAtFetch + Date().timeIntervalSince(self.fetchDate)
+            self.info.elapsed = min(interpolated, self.info.duration)
+        }
+        RunLoop.main.add(t, forMode: .common)
+        progressTimer = t
     }
 
     // MARK: – Controls (MRCommand values from MediaRemote private header)
