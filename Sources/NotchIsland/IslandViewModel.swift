@@ -148,19 +148,39 @@ class IslandViewModel: ObservableObject {
 
     // MARK: – Island geometry
 
+    // Measure the real notch from NSScreen (macOS 12+ APIs).
+    // auxiliaryTopLeftArea / auxiliaryTopRightArea give the menu-bar regions
+    // on either side of the notch; subtracting them from frame width gives
+    // the exact notch width without any hard-coding.
+    var notchWidth: CGFloat {
+        guard let screen = NSScreen.main, screen.safeAreaInsets.top > 0 else {
+            return kNotchWidth
+        }
+        let left  = screen.auxiliaryTopLeftArea?.width  ?? 0
+        let right = screen.auxiliaryTopRightArea?.width ?? 0
+        let w = screen.frame.width - left - right
+        return w > 80 ? w : kNotchWidth
+    }
+
+    var notchHeight: CGFloat {
+        let h = NSScreen.main?.safeAreaInsets.top ?? 0
+        return h > 0 ? h : kNotchHeight
+    }
+
     var islandWidth: CGFloat {
-        state.isExpanded ? kIslandExpandedWidth : kNotchWidth
+        state.isExpanded ? kIslandExpandedWidth : notchWidth
     }
 
     var islandHeight: CGFloat {
-        state.isExpanded ? kIslandExpandedHeight : kNotchHeight
+        state.isExpanded ? kIslandExpandedHeight : notchHeight
     }
 
     // Hit-test rect in NSView coords (origin bottom-left).
-    // Expand slightly so hovering near the notch edge still registers.
+    // Add a small buffer in compact mode so hovering near the notch edge
+    // registers before the visual boundary.
     var pillRectInWindow: CGRect {
-        let w = islandWidth  + (state.isExpanded ? 0 : 20)
-        let h = islandHeight + (state.isExpanded ? 0 : 10)
+        let w = islandWidth  + (state.isExpanded ? 0 : 16)
+        let h = islandHeight + (state.isExpanded ? 0 :  8)
         let x = (kWindowWidth - w) / 2
         let y = kWindowHeight - h
         return CGRect(x: x, y: y, width: w, height: h)

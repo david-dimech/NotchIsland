@@ -4,61 +4,70 @@ struct ExpandedIslandView: View {
     let module: IslandModule
     @ObservedObject var viewModel: IslandViewModel
 
-    // Swipe state
     @State private var moduleIndex: Int = 0
     @State private var dragOffset: CGFloat = 0
+    @State private var lastEventDeltaX: CGFloat = 0   // used for velocity-based snap
 
     private let modules: [IslandModule] = [.nowPlaying, .systemStats, .timer]
+    private let snapSpring = Animation.interpolatingSpring(mass: 1, stiffness: 420, damping: 36)
 
     var body: some View {
         VStack(spacing: 0) {
-            // Module indicator dots (tap to switch, swiped between)
-            HStack(spacing: 5) {
-                ForEach(Array(modules.enumerated()), id: \.offset) { i, _ in
-                    Circle()
-                        .fill(i == moduleIndex ? Color.white : Color.white.opacity(0.25))
-                        .frame(width: 5, height: 5)
-                        .animation(.easeInOut(duration: 0.2), value: moduleIndex)
-                        .onTapGesture { switchTo(index: i) }
-                }
-            }
-            .padding(.top, 10)
-            .padding(.bottom, 6)
+            pageIndicator
+                .padding(.top, 8)
+                .padding(.bottom, 6)
 
-            Divider()
-                .background(Color.white.opacity(0.08))
+            Divider().background(Color.white.opacity(0.08))
 
-            // Swipeable content area
             GeometryReader { geo in
+                // All modules live in a single HStack; we slide it left/right.
                 HStack(spacing: 0) {
                     ForEach(Array(modules.enumerated()), id: \.offset) { i, mod in
                         moduleView(mod)
                             .frame(width: geo.size.width, height: geo.size.height)
                     }
                 }
+                // Animate only on index snap; drag offset updates are direct/instant.
                 .offset(x: -CGFloat(moduleIndex) * geo.size.width + dragOffset)
-                .animation(.interpolatingSpring(mass: 1, stiffness: 450, damping: 38), value: moduleIndex)
+                .animation(snapSpring, value: moduleIndex)
                 .background(
-                    // Intercept two-finger trackpad swipes
                     TrackpadScrollReader { deltaX, phase in
                         handleScroll(deltaX: deltaX, phase: phase, width: geo.size.width)
                     }
                 )
             }
             .clipped()
-            .padding(.horizontal, 4)
+            .padding(.horizontal, 2)
             .padding(.bottom, 4)
         }
-        .onAppear {
-            moduleIndex = modules.firstIndex(of: module) ?? 0
+        .onAppear { moduleIndex = modules.firstIndex(of: module) ?? 0 }
+        .onChange(of: module) { _, m in
+            if let i = modules.firstIndex(of: m), i != moduleIndex {
+                withAnimation(snapSpring) { moduleIndex = i }
+            }
         }
-        .onChange(of: module) { _, newModule in
-            if let i = modules.firstIndex(of: newModule) {
-                withAnimation(.interpolatingSpring(mass: 1, stiffness: 450, damping: 38)) {
-                    moduleIndex = i
+    }
+
+    // MARK: – Page indicator
+
+    private var pageIndicator: some View {
+        HStack(spacing: 5) {
+            ForEach(0..<modules.count, id: \.self) { i in
+                if i == moduleIndex {
+                    // Active: wide capsule
+                    Capsule()
+                        .fill(Color.white)
+                        .frame(width: 18, height: 5)
+                } else {
+                    // Inactive: small circle, tap to jump
+                    Circle()
+                        .fill(Color.white.opacity(0.28))
+                        .frame(width: 5, height: 5)
+                        .onTapGesture { switchTo(i) }
                 }
             }
         }
+        .animation(.easeInOut(duration: 0.2), value: moduleIndex)
     }
 
     // MARK: – Module content
@@ -72,38 +81,48 @@ struct ExpandedIslandView: View {
         }
     }
 
-    // MARK: – Swipe logic
+    // MARK: – Swipe
 
-    private func switchTo(index: Int) {
-        let clamped = max(0, min(index, modules.count - 1))
-        withAnimation(.interpolatingSpring(mass: 1, stiffness: 450, damping: 38)) {
-            moduleIndex = clamped
-        }
-        viewModel.expand(to: modules[clamped])
+    private func switchTo(_ index: Int) {
+        let i = max(0, min(index, modules.count - 1))
+        withAnimation(snapSpring) { moduleIndex = i }
+        // Expand to the new module so the ViewModel stays in sync
+        viewModel.expand(to: modules[i])
     }
 
     private func handleScroll(deltaX: CGFloat, phase: NSEvent.Phase, width: CGFloat) {
         switch phase {
+
         case .changed:
-            let atLeft  = moduleIndex == 0               && dragOffset > 0
-            let atRight = moduleIndex == modules.count - 1 && dragOffset < 0
-            let rubber: CGFloat = (atLeft || atRight) ? 0.18 : 1.0
-            withAnimation(.interactiveSpring()) {
-                dragOffset -= deltaX * rubber
-            }
+            // *** Direct, no-animation update so the content follows the finger 1:1 ***
+            // Rubber-band resistance at the ends so you feel the boundary.
+            let atStart = moduleIndex == 0               && dragOffset > 0
+            let atEnd   = moduleIndex == modules.count - 1 && dragOffset < 0
+            let rubber: CGFloat = (atStart || atEnd) ? 0.15 : 1.0
+            dragOffset += deltaX * rubber
+            lastEventDeltaX = deltaX
 
         case .ended, .cancelled:
-            let threshold = width * 0.22
-            let velocity  = dragOffset        // simple: direction determines snap
-            var next = moduleIndex
-            if velocity < -threshold && moduleIndex < modules.count - 1 { next += 1 }
-            if velocity >  threshold && moduleIndex > 0                  { next -= 1 }
+            // A "quick flick" (last event had large velocity) triggers the page
+            // change even if the accumulated offset is small.
+            let isFlick     = abs(lastEventDeltaX) > 4
+            let threshold   = isFlick ? 12 : width * 0.2
 
-            withAnimation(.interpolatingSpring(mass: 1, stiffness: 450, damping: 38)) {
-                moduleIndex  = next
-                dragOffset   = 0
+            let oldIndex = moduleIndex           // save BEFORE mutating
+            var next = oldIndex
+            if dragOffset < -threshold, oldIndex < modules.count - 1 { next = oldIndex + 1 }
+            if dragOffset >  threshold, oldIndex > 0                  { next = oldIndex - 1 }
+
+            withAnimation(snapSpring) {
+                moduleIndex = next
+                dragOffset  = 0
             }
-            if next != moduleIndex { viewModel.expand(to: modules[next]) }
+            lastEventDeltaX = 0
+
+            // Sync viewModel only when the module actually changed
+            if next != oldIndex {
+                viewModel.expand(to: modules[next])
+            }
 
         default:
             break

@@ -70,7 +70,7 @@ let kIslandExpandedHeight: CGFloat = 142
 let kIslandCornerRadius: CGFloat   = 14  // fixed, not height/2
 
 // Hover inflate factor (visual only, hit-test rect stays at base)
-let kHoverScale: CGFloat = 1.08
+let kHoverScale: CGFloat = 1.05   // subtle — just enough to feel interactive
 
 // Legacy aliases kept so manager / view code compiles during refactor
 let kPillCompactWidth  = kNotchWidth
