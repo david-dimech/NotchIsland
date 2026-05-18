@@ -28,17 +28,16 @@ struct ExpandedIslandView: View {
 
                 HStack(spacing: 0) {
                     ForEach(Array(modules.enumerated()), id: \.offset) { i, mod in
+                        // Each module fills its exact page slot — padding and
+                        // centering are handled inside the module view itself.
                         moduleView(mod)
                             .frame(width: w, height: geo.size.height)
                     }
                 }
-                // Offset has NO .animation modifier — all animation is driven
-                // explicitly via withAnimation so drag is instant and snap springs.
+                // No .animation modifier — withAnimation drives all transitions.
                 .offset(x: -CGFloat(moduleIndex) * w + dragOffset)
             }
             .clipped()
-            .padding(.horizontal, 2)
-            .padding(.bottom, 4)
         }
         .onAppear {
             moduleIndex = modules.firstIndex(of: module) ?? 0

@@ -2,7 +2,6 @@ import SwiftUI
 
 struct NowPlayingView: View {
     @ObservedObject var viewModel: IslandViewModel
-
     private var info: NowPlayingInfo { viewModel.nowPlaying }
 
     var body: some View {
@@ -18,15 +17,15 @@ struct NowPlayingView: View {
                         RoundedRectangle(cornerRadius: 8, style: .continuous)
                             .fill(Color.white.opacity(0.08))
                         Image(systemName: "music.note")
-                            .font(.system(size: 18))
+                            .font(.system(size: 16))
                             .foregroundColor(.white.opacity(0.3))
                     }
                 }
             }
-            .frame(width: 56, height: 56)
+            .frame(width: 52, height: 52)
             .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
 
-            // Track info + progress
+            // Track info + progress bar
             VStack(alignment: .leading, spacing: 4) {
                 Text(info.title.isEmpty ? "Nothing Playing" : info.title)
                     .font(.system(size: 13, weight: .semibold))
@@ -42,28 +41,22 @@ struct NowPlayingView: View {
 
                 if info.duration > 0 {
                     ProgressView(value: min(info.elapsed / info.duration, 1.0))
-                        .progressViewStyle(LinearProgressViewStyle(tint: .white))
+                        .progressViewStyle(LinearProgressViewStyle(tint: .white.opacity(0.6)))
                         .frame(height: 2)
-                        .padding(.top, 4)
+                        .padding(.top, 2)
                 }
             }
             .frame(maxWidth: .infinity, alignment: .leading)
 
             // Playback controls
-            VStack(spacing: 10) {
-                HStack(spacing: 16) {
-                    controlButton(icon: "backward.fill", size: 14) {
-                        viewModel.previousTrack()
-                    }
-                    controlButton(icon: info.isPlaying ? "pause.fill" : "play.fill", size: 20) {
-                        viewModel.togglePlayPause()
-                    }
-                    controlButton(icon: "forward.fill", size: 14) {
-                        viewModel.nextTrack()
-                    }
-                }
+            HStack(spacing: 18) {
+                controlButton(icon: "backward.fill", size: 13) { viewModel.previousTrack() }
+                controlButton(icon: info.isPlaying ? "pause.fill" : "play.fill", size: 20) { viewModel.togglePlayPause() }
+                controlButton(icon: "forward.fill", size: 13)  { viewModel.nextTrack() }
             }
         }
+        .padding(.horizontal, 14)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)   // fill + centre in page slot
     }
 
     private func controlButton(icon: String, size: CGFloat, action: @escaping () -> Void) -> some View {
@@ -71,7 +64,7 @@ struct NowPlayingView: View {
             Image(systemName: icon)
                 .font(.system(size: size, weight: .medium))
                 .foregroundColor(.white)
-                .frame(width: size + 10, height: size + 10)
+                .frame(width: size + 12, height: size + 12)
                 .contentShape(Rectangle())
         }
         .buttonStyle(.plain)

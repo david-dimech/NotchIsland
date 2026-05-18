@@ -10,54 +10,51 @@ struct TimerView: View {
 
     var body: some View {
         HStack(spacing: 20) {
-            // Ring + time
+            // Progress ring
             ZStack {
                 Circle()
                     .stroke(Color.white.opacity(0.1), lineWidth: 5)
                 Circle()
-                    .trim(from: 0, to: t.progress)
+                    .trim(from: 0, to: CGFloat(t.progress))
                     .stroke(ringColor, style: StrokeStyle(lineWidth: 5, lineCap: .round))
                     .rotationEffect(.degrees(-90))
                     .animation(.linear(duration: 1), value: t.progress)
 
-                VStack(spacing: 2) {
+                VStack(spacing: 1) {
                     Text(t.displayString)
-                        .font(.system(size: 18, weight: .bold, design: .monospaced))
+                        .font(.system(size: 16, weight: .bold, design: .monospaced))
                         .foregroundColor(.white)
                     Text(t.isBreak ? "Break" : "Focus")
-                        .font(.system(size: 9, weight: .medium))
+                        .font(.system(size: 8, weight: .medium))
                         .foregroundColor(.white.opacity(0.45))
                         .textCase(.uppercase)
                 }
             }
-            .frame(width: 72, height: 72)
+            .frame(width: 64, height: 64)
 
-            // Controls
-            VStack(alignment: .leading, spacing: 8) {
-                // Presets
-                HStack(spacing: 6) {
-                    ForEach(presets, id: \.minutes) { preset in
-                        Button {
-                            viewModel.setTimerDuration(minutes: preset.minutes)
-                        } label: {
-                            Text(preset.label)
+            // Controls column
+            VStack(alignment: .leading, spacing: 10) {
+                // Quick-set presets
+                HStack(spacing: 5) {
+                    ForEach(presets, id: \.minutes) { p in
+                        let active = Int(t.duration / 60) == p.minutes
+                        Button { viewModel.setTimerDuration(minutes: p.minutes) } label: {
+                            Text(p.label)
                                 .font(.system(size: 10, weight: .semibold))
-                                .foregroundColor(Int(t.duration / 60) == preset.minutes ? .white : .white.opacity(0.4))
+                                .foregroundColor(active ? .white : .white.opacity(0.35))
                                 .padding(.horizontal, 7)
-                                .padding(.vertical, 4)
+                                .padding(.vertical, 3)
                                 .background(
                                     RoundedRectangle(cornerRadius: 5, style: .continuous)
-                                        .fill(Int(t.duration / 60) == preset.minutes
-                                              ? Color.white.opacity(0.18)
-                                              : Color.clear)
+                                        .fill(active ? Color.white.opacity(0.18) : Color.clear)
                                 )
                         }
                         .buttonStyle(.plain)
                     }
                 }
 
-                // Play / Pause / Reset
-                HStack(spacing: 14) {
+                // Play / pause + reset
+                HStack(spacing: 16) {
                     Button {
                         t.isRunning ? viewModel.pauseTimer() : viewModel.startTimer()
                     } label: {
@@ -69,17 +66,17 @@ struct TimerView: View {
 
                     Button { viewModel.resetTimer() } label: {
                         Image(systemName: "arrow.counterclockwise")
-                            .font(.system(size: 15, weight: .medium))
-                            .foregroundColor(.white.opacity(0.5))
+                            .font(.system(size: 14, weight: .medium))
+                            .foregroundColor(.white.opacity(0.45))
                     }
                     .buttonStyle(.plain)
                 }
             }
             .frame(maxWidth: .infinity, alignment: .leading)
         }
+        .padding(.horizontal, 20)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)   // fill + centre in page slot
     }
 
-    private var ringColor: Color {
-        t.isBreak ? .green : .orange
-    }
+    private var ringColor: Color { t.isBreak ? .green : .orange }
 }
