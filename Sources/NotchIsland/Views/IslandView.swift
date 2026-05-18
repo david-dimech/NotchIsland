@@ -3,47 +3,51 @@ import SwiftUI
 struct IslandView: View {
     @ObservedObject var viewModel: IslandViewModel
 
-    var pillWidth: CGFloat {
-        switch viewModel.state {
-        case .compact:   return kPillCompactWidth
-        case .expanded:  return kPillExpandedWidth
-        }
-    }
+    private var islandW: CGFloat { viewModel.islandWidth }
+    private var islandH: CGFloat { viewModel.islandHeight }
 
-    var pillHeight: CGFloat {
-        switch viewModel.state {
-        case .compact:   return kPillCompactHeight
-        case .expanded:  return kPillExpandedHeight
-        }
+    // Hover scale only applies in compact state — expanded island stays stable
+    private var hoverScale: CGFloat {
+        (viewModel.isHovering && !viewModel.state.isExpanded) ? kHoverScale : 1.0
     }
-
-    var cornerRadius: CGFloat { pillHeight / 2 }
 
     var body: some View {
         ZStack(alignment: .top) {
-            // Transparent click-through background — must NOT intercept events
+            // Transparent layer — clicks pass through to whatever is behind
             Color.clear
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
                 .allowsHitTesting(false)
 
-            // The island pill
-            RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+            // The island — a rounded rectangle that grows down from the notch
+            RoundedRectangle(cornerRadius: kIslandCornerRadius, style: .continuous)
                 .fill(Color.black)
-                .frame(width: pillWidth, height: pillHeight)
+                .frame(width: islandW, height: islandH)
                 .overlay(alignment: .top) {
-                    pillContent
-                        .frame(width: pillWidth, height: pillHeight)
+                    islandContent
+                        .frame(width: islandW, height: islandH)
                         .clipped()
                 }
-                .shadow(color: .black.opacity(0.5), radius: 12, x: 0, y: 6)
-                .animation(.spring(response: 0.4, dampingFraction: 0.75), value: pillWidth)
-                .animation(.spring(response: 0.4, dampingFraction: 0.75), value: pillHeight)
+                // Expand shadow only when open so compact blends into the notch
+                .shadow(
+                    color: viewModel.state.isExpanded ? .black.opacity(0.45) : .clear,
+                    radius: 16, x: 0, y: 8
+                )
+                .scaleEffect(hoverScale, anchor: .top)
+                .animation(IslandViewModel.hoverSpring, value: hoverScale)
+                // Width and height animate with the organic expand spring
+                .animation(.interpolatingSpring(mass: 1, stiffness: 160, damping: 18), value: islandW)
+                .animation(.interpolatingSpring(mass: 1, stiffness: 160, damping: 18), value: islandH)
+                // Tap on compact island to expand to the contextually relevant module
+                .onTapGesture {
+                    guard case .compact = viewModel.state else { return }
+                    viewModel.expand(to: viewModel.contextManager.suggestedModule)
+                }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
     }
 
     @ViewBuilder
-    private var pillContent: some View {
+    private var islandContent: some View {
         switch viewModel.state {
         case .compact:
             CompactIslandView(viewModel: viewModel)

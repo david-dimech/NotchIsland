@@ -1,76 +1,36 @@
 import SwiftUI
 
+// The compact state is intentionally minimal — it reads as an extension of the
+// physical notch. Status is communicated by small coloured dots only, so the
+// island stays unobtrusive when the user isn't interacting with it.
 struct CompactIslandView: View {
     @ObservedObject var viewModel: IslandViewModel
 
     var body: some View {
-        HStack(spacing: 10) {
-            // Now playing indicator
+        HStack(spacing: 6) {
+            Spacer()
+
+            // Now-playing dot (green)
             if viewModel.nowPlaying.isPlaying {
-                Button {
-                    viewModel.toggle(.nowPlaying)
-                } label: {
-                    MusicBarsView()
-                        .frame(width: 16, height: 16)
-                }
-                .buttonStyle(.plain)
+                Circle()
+                    .fill(Color.green)
+                    .frame(width: 6, height: 6)
+                    .transition(.scale.combined(with: .opacity))
             }
 
-            // Timer indicator
+            // Timer dot (orange) with live countdown
             if viewModel.timerState.isRunning {
-                Button {
-                    viewModel.toggle(.timer)
-                } label: {
-                    HStack(spacing: 4) {
-                        Image(systemName: "timer")
-                            .font(.system(size: 10, weight: .medium))
-                            .foregroundColor(.orange)
-                        Text(viewModel.timerState.displayString)
-                            .font(.system(size: 11, weight: .semibold, design: .monospaced))
-                            .foregroundColor(.white)
-                    }
-                }
-                .buttonStyle(.plain)
+                Circle()
+                    .fill(Color.orange)
+                    .frame(width: 6, height: 6)
+                    .transition(.scale.combined(with: .opacity))
             }
 
-            // Tap anywhere when idle to show stats
-            if !viewModel.nowPlaying.isPlaying && !viewModel.timerState.isRunning {
-                Button {
-                    viewModel.toggle(.systemStats)
-                } label: {
-                    Image(systemName: "waveform")
-                        .font(.system(size: 12))
-                        .foregroundColor(.white.opacity(0.5))
-                }
-                .buttonStyle(.plain)
-            }
+            Spacer()
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-    }
-}
-
-// Animated music bars — the classic "currently playing" indicator
-struct MusicBarsView: View {
-    @State private var heights: [CGFloat] = [0.4, 0.8, 0.6]
-
-    var body: some View {
-        HStack(alignment: .bottom, spacing: 2) {
-            ForEach(0..<3, id: \.self) { i in
-                RoundedRectangle(cornerRadius: 1.5)
-                    .fill(Color.green)
-                    .frame(width: 3, height: 16 * heights[i])
-                    .animation(
-                        .easeInOut(duration: 0.45).repeatForever(autoreverses: true).delay(Double(i) * 0.15),
-                        value: heights[i]
-                    )
-            }
-        }
-        .onAppear {
-            for i in 0..<3 {
-                DispatchQueue.main.asyncAfter(deadline: .now() + Double(i) * 0.15) {
-                    heights[i] = CGFloat.random(in: 0.2...1.0)
-                }
-            }
-        }
+        .animation(.easeInOut(duration: 0.25), value: viewModel.nowPlaying.isPlaying)
+        .animation(.easeInOut(duration: 0.25), value: viewModel.timerState.isRunning)
+        // The entire compact island is one tap target (handled in IslandView)
     }
 }
