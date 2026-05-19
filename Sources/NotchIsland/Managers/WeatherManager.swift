@@ -7,7 +7,6 @@ class WeatherManager: ObservableObject {
 
     init() {
         refresh()
-        // Refresh every 30 minutes
         let t = Timer(timeInterval: 1800, repeats: true) { [weak self] _ in self?.refresh() }
         RunLoop.main.add(t, forMode: .common)
         refreshTimer = t
@@ -16,6 +15,8 @@ class WeatherManager: ObservableObject {
     deinit { refreshTimer?.invalidate() }
 
     func refresh() {
+        // Reset error state before retrying
+        DispatchQueue.main.async { self.weather.isError = false }
         fetchLocation { [weak self] lat, lon, city in
             self?.fetchWeather(lat: lat, lon: lon, city: city)
         }
@@ -24,36 +25,54 @@ class WeatherManager: ObservableObject {
     // MARK: – Private
 
     private func fetchLocation(completion: @escaping (Double, Double, String) -> Void) {
-        guard let url = URL(string: "http://ip-api.com/json") else { return }
-        URLSession.shared.dataTask(with: url) { data, _, _ in
-            guard let data,
+        guard let url = URL(string: "http://ip-api.com/json") else {
+            DispatchQueue.main.async { self.weather.isError = true }
+            return
+        }
+        let task = URLSession.shared.dataTask(with: url) { [weak self] data, _, error in
+            guard let self else { return }
+            guard error == nil,
+                  let data,
                   let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
                   let lat  = json["lat"] as? Double,
                   let lon  = json["lon"] as? Double
-            else { return }
-            let city = json["city"] as? String ?? ""
-            completion(lat, lon, city)
-        }.resume()
+            else {
+                DispatchQueue.main.async { self.weather.isError = true }
+                return
+            }
+            completion(lat, lon, json["city"] as? String ?? "")
+        }
+        task.resume()
+
+        // Mark error if no response within 8 seconds
+        DispatchQueue.main.asyncAfter(deadline: .now() + 8) { [weak self] in
+            guard let self, !self.weather.isLoaded else { return }
+            self.weather.isError = true
+        }
     }
 
     private func fetchWeather(lat: Double, lon: Double, city: String) {
         var comps = URLComponents(string: "https://api.open-meteo.com/v1/forecast")!
         comps.queryItems = [
-            .init(name: "latitude",          value: String(lat)),
-            .init(name: "longitude",         value: String(lon)),
-            .init(name: "current",           value: "temperature_2m,apparent_temperature,weathercode"),
-            .init(name: "temperature_unit",  value: "celsius"),
-            .init(name: "forecast_days",     value: "1"),
+            .init(name: "latitude",         value: String(lat)),
+            .init(name: "longitude",        value: String(lon)),
+            .init(name: "current",          value: "temperature_2m,apparent_temperature,weathercode"),
+            .init(name: "temperature_unit", value: "celsius"),
+            .init(name: "forecast_days",    value: "1"),
         ]
         guard let url = comps.url else { return }
-        URLSession.shared.dataTask(with: url) { [weak self] data, _, _ in
-            guard let self,
+        URLSession.shared.dataTask(with: url) { [weak self] data, _, error in
+            guard let self else { return }
+            guard error == nil,
                   let data,
                   let json    = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
                   let current = json["current"] as? [String: Any],
                   let temp    = current["temperature_2m"] as? Double,
                   let code    = current["weathercode"] as? Int
-            else { return }
+            else {
+                DispatchQueue.main.async { self.weather.isError = true }
+                return
+            }
             let feels = current["apparent_temperature"] as? Double ?? temp
             DispatchQueue.main.async {
                 self.weather = WeatherInfo(
@@ -61,7 +80,8 @@ class WeatherManager: ObservableObject {
                     feelsLike:   feels,
                     weatherCode: code,
                     city:        city,
-                    isLoaded:    true
+                    isLoaded:    true,
+                    isError:     false
                 )
             }
         }.resume()

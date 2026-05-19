@@ -49,10 +49,12 @@ struct NowPlayingView: View {
             .frame(maxWidth: .infinity, alignment: .leading)
 
             // Playback controls
-            HStack(spacing: 18) {
-                controlButton(icon: "backward.fill", size: 13) { viewModel.previousTrack() }
+            HStack(spacing: 10) {
+                controlButton(icon: "gobackward.10", size: 12) { viewModel.skipBackward() }
+                controlButton(icon: "backward.fill",  size: 13) { viewModel.previousTrack() }
                 controlButton(icon: info.isPlaying ? "pause.fill" : "play.fill", size: 20) { viewModel.togglePlayPause() }
-                controlButton(icon: "forward.fill", size: 13)  { viewModel.nextTrack() }
+                controlButton(icon: "forward.fill",   size: 13) { viewModel.nextTrack() }
+                controlButton(icon: "goforward.10",   size: 12) { viewModel.skipForward() }
             }
         }
         .padding(.horizontal, 14)

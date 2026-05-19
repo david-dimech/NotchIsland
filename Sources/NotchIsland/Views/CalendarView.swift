@@ -32,18 +32,19 @@ struct CalendarView: View {
                     .frame(maxWidth: .infinity)
                 Spacer()
             } else {
-                VStack(spacing: 0) {
-                    ForEach(viewModel.calendarEvents) { ev in
-                        EventRow(event: ev)
-                        if ev.id != viewModel.calendarEvents.last?.id {
-                            Divider()
-                                .background(Color.white.opacity(0.07))
-                                .padding(.leading, 18)
+                ScrollView(.vertical, showsIndicators: false) {
+                    VStack(spacing: 0) {
+                        ForEach(viewModel.calendarEvents) { ev in
+                            EventRow(event: ev)
+                            if ev.id != viewModel.calendarEvents.last?.id {
+                                Divider()
+                                    .background(Color.white.opacity(0.07))
+                                    .padding(.leading, 18)
+                            }
                         }
                     }
                 }
                 .padding(.top, 6)
-                Spacer()
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)

@@ -43,13 +43,35 @@ struct TimerState {
     }
 }
 
-enum IslandModule: Equatable {
-    case nowPlaying
-    case calendar
-    case systemStats
-    case timer
-    case weather
-    case bluetooth
+enum IslandModule: String, Equatable, Hashable, CaseIterable {
+    case nowPlaying  = "nowPlaying"
+    case calendar    = "calendar"
+    case systemStats = "systemStats"
+    case timer       = "timer"
+    case weather     = "weather"
+    case bluetooth   = "bluetooth"
+
+    var displayName: String {
+        switch self {
+        case .nowPlaying:  return "Media"
+        case .calendar:    return "Calendar"
+        case .systemStats: return "Battery"
+        case .timer:       return "Timer"
+        case .weather:     return "Weather"
+        case .bluetooth:   return "Bluetooth"
+        }
+    }
+
+    var icon: String {
+        switch self {
+        case .nowPlaying:  return "music.note"
+        case .calendar:    return "calendar"
+        case .systemStats: return "battery.100"
+        case .timer:       return "timer"
+        case .weather:     return "cloud.sun.fill"
+        case .bluetooth:   return "bluetooth"
+        }
+    }
 }
 
 enum IslandState: Equatable {
@@ -92,6 +114,7 @@ struct WeatherInfo {
     var weatherCode: Int = 0
     var city: String = ""
     var isLoaded: Bool = false
+    var isError: Bool = false
 
     var condition: String {
         switch weatherCode {

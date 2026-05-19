@@ -48,6 +48,23 @@ struct WeatherView: View {
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .padding(.horizontal, 24)
+        } else if w.isError {
+            VStack(spacing: 8) {
+                Image(systemName: "wifi.exclamationmark")
+                    .font(.system(size: 22))
+                    .foregroundColor(.white.opacity(0.3))
+                Text("Weather unavailable")
+                    .font(.system(size: 11))
+                    .foregroundColor(.white.opacity(0.3))
+                Button("Retry") { viewModel.weatherManager.refresh() }
+                    .font(.system(size: 11, weight: .medium))
+                    .foregroundColor(.white.opacity(0.55))
+                    .buttonStyle(.plain)
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 4)
+                    .background(RoundedRectangle(cornerRadius: 6).fill(Color.white.opacity(0.08)))
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
         } else {
             ProgressView()
                 .progressViewStyle(.circular)

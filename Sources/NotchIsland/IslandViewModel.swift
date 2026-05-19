@@ -124,9 +124,11 @@ class IslandViewModel: ObservableObject {
 
     // MARK: – Now Playing controls
 
-    func togglePlayPause() { nowPlayingManager.togglePlayPause() }
-    func previousTrack()   { nowPlayingManager.previousTrack() }
-    func nextTrack()       { nowPlayingManager.nextTrack() }
+    func togglePlayPause()  { nowPlayingManager.togglePlayPause() }
+    func previousTrack()    { nowPlayingManager.previousTrack() }
+    func nextTrack()        { nowPlayingManager.nextTrack() }
+    func skipForward()      { nowPlayingManager.skipForward() }
+    func skipBackward()     { nowPlayingManager.skipBackward() }
 
     // MARK: – Timer
 

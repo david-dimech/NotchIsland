@@ -18,7 +18,8 @@ class NowPlayingManager: ObservableObject {
 
     // Progress interpolation — updated every 0.5 s while playing
     private var progressTimer: Timer?
-    private var fetchDate:     Date         = .distantPast
+    private var pollTimer: Timer?
+    private var fetchDate:      Date         = .distantPast
     private var elapsedAtFetch: TimeInterval = 0
 
     init() {
@@ -27,11 +28,13 @@ class NowPlayingManager: ObservableObject {
         observeNotifications()
         fetchInfo()
         startProgressTimer()
+        startPollTimer()
     }
 
     deinit {
         DistributedNotificationCenter.default().removeObserver(self)
         progressTimer?.invalidate()
+        pollTimer?.invalidate()
         if let h = mrHandle { dlclose(h) }
     }
 
@@ -89,7 +92,7 @@ class NowPlayingManager: ObservableObject {
         }
     }
 
-    // MARK: – Progress interpolation
+    // MARK: – Timers
 
     private func startProgressTimer() {
         let t = Timer(timeInterval: 0.5, repeats: true) { [weak self] _ in
@@ -101,9 +104,48 @@ class NowPlayingManager: ObservableObject {
         progressTimer = t
     }
 
+    // Fallback poll every 3 s so the UI stays in sync if distributed notifications miss
+    private func startPollTimer() {
+        let t = Timer(timeInterval: 3.0, repeats: true) { [weak self] _ in self?.fetchInfo() }
+        RunLoop.main.add(t, forMode: .common)
+        pollTimer = t
+    }
+
     // MARK: – Controls (MRCommand values from MediaRemote private header)
 
-    func togglePlayPause() { _ = sendCmd?(2, nil) }
-    func previousTrack()   { _ = sendCmd?(5, nil) }
-    func nextTrack()       { _ = sendCmd?(4, nil) }
+    func togglePlayPause() {
+        _ = sendCmd?(2, nil)
+        // Refresh state after a short delay so the play/pause icon flips
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) { [weak self] in self?.fetchInfo() }
+    }
+
+    func previousTrack() {
+        _ = sendCmd?(5, nil)
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) { [weak self] in self?.fetchInfo() }
+    }
+
+    func nextTrack() {
+        _ = sendCmd?(4, nil)
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) { [weak self] in self?.fetchInfo() }
+    }
+
+    // Skip forward / backward using MRMediaRemoteCommandSeekToPlaybackPosition (42)
+    func skipBackward(by seconds: TimeInterval = 10) {
+        let newPos = max(0, info.elapsed - seconds)
+        let opts = ["kMRMediaRemoteOptionPlaybackPosition": newPos] as NSDictionary
+        _ = sendCmd?(42, opts)
+        info.elapsed    = newPos
+        elapsedAtFetch  = newPos
+        fetchDate       = Date()
+    }
+
+    func skipForward(by seconds: TimeInterval = 10) {
+        guard info.duration > 0 else { return }
+        let newPos = min(info.duration, info.elapsed + seconds)
+        let opts = ["kMRMediaRemoteOptionPlaybackPosition": newPos] as NSDictionary
+        _ = sendCmd?(42, opts)
+        info.elapsed    = newPos
+        elapsedAtFetch  = newPos
+        fetchDate       = Date()
+    }
 }
