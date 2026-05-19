@@ -7,10 +7,6 @@ struct IslandView: View {
     private var islandH: CGFloat { viewModel.islandHeight }
 
     // Hover scale only applies in compact state — expanded island stays stable
-    private var hoverScale: CGFloat {
-        (viewModel.isHovering && !viewModel.state.isExpanded) ? kHoverScale : 1.0
-    }
-
     var body: some View {
         ZStack(alignment: .top) {
             // Transparent layer — clicks pass through to whatever is behind
@@ -27,13 +23,11 @@ struct IslandView: View {
                         .frame(width: islandW, height: islandH)
                         .clipped()
                 }
-                // Expand shadow only when open so compact blends into the notch
+                // Shadow appears as soon as the island is larger than the physical notch
                 .shadow(
-                    color: viewModel.state.isExpanded ? .black.opacity(0.45) : .clear,
+                    color: (viewModel.state.isExpanded || viewModel.isHovering) ? .black.opacity(0.45) : .clear,
                     radius: 16, x: 0, y: 8
                 )
-                .scaleEffect(hoverScale, anchor: .top)
-                .animation(IslandViewModel.hoverSpring, value: hoverScale)
                 // Width and height animate with the organic expand spring
                 .animation(.interpolatingSpring(mass: 1, stiffness: 160, damping: 18), value: islandW)
                 .animation(.interpolatingSpring(mass: 1, stiffness: 160, damping: 18), value: islandH)
@@ -50,7 +44,15 @@ struct IslandView: View {
     private var islandContent: some View {
         switch viewModel.state {
         case .compact:
-            CompactIslandView(viewModel: viewModel)
+            if viewModel.isHovering {
+                HoverPreviewView(viewModel: viewModel)
+                    .transition(.opacity)
+                    .animation(.easeInOut(duration: 0.15), value: viewModel.isHovering)
+            } else {
+                CompactIslandView(viewModel: viewModel)
+                    .transition(.opacity)
+                    .animation(.easeInOut(duration: 0.15), value: viewModel.isHovering)
+            }
         case .expanded(let module):
             ExpandedIslandView(module: module, viewModel: viewModel)
         }

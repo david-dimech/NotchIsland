@@ -8,7 +8,7 @@ struct ExpandedIslandView: View {
     @State private var dragOffset: CGFloat = 0
     @State private var lastDeltaX: CGFloat = 0
 
-    private let modules: [IslandModule] = [.nowPlaying, .systemStats, .timer]
+    private let modules: [IslandModule] = [.nowPlaying, .calendar, .systemStats, .timer, .weather, .bluetooth]
 
     // Crisp spring for page snapping — feels like a card flicking into place
     private let snapSpring = Animation.interpolatingSpring(
@@ -82,8 +82,11 @@ struct ExpandedIslandView: View {
     private func moduleView(_ mod: IslandModule) -> some View {
         switch mod {
         case .nowPlaying:  NowPlayingView(viewModel: viewModel)
+        case .calendar:    CalendarView(viewModel: viewModel)
         case .systemStats: SystemStatsView(viewModel: viewModel)
         case .timer:       TimerView(viewModel: viewModel)
+        case .weather:     WeatherView(viewModel: viewModel)
+        case .bluetooth:   BluetoothView(viewModel: viewModel)
         }
     }
 
