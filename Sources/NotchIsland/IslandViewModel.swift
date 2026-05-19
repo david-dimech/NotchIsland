@@ -11,10 +11,16 @@ class IslandViewModel: ObservableObject {
     @Published var nowPlaying         = NowPlayingInfo()
     @Published var systemStats        = SystemStats()
     @Published var timerState         = TimerState()
+    @Published var calendarEvents:    [CalendarEventInfo] = []
+    @Published var weather            = WeatherInfo()
+    @Published var bluetoothDevices:  [BTDeviceInfo] = []
 
     let nowPlayingManager  = NowPlayingManager()
     let systemStatsManager = SystemStatsManager()
     let contextManager     = ContextManager()
+    let calendarManager    = CalendarManager()
+    let weatherManager     = WeatherManager()
+    let bluetoothManager   = BluetoothManager()
 
     // Set by ExpandedIslandView to receive swipe events forwarded from PillHitTestView
     var onSwipeEvent: ((CGFloat, NSEvent.Phase) -> Void)?
@@ -32,6 +38,21 @@ class IslandViewModel: ObservableObject {
         systemStatsManager.$stats
             .receive(on: RunLoop.main)
             .assign(to: \.systemStats, on: self)
+            .store(in: &cancellables)
+
+        calendarManager.$events
+            .receive(on: RunLoop.main)
+            .assign(to: \.calendarEvents, on: self)
+            .store(in: &cancellables)
+
+        weatherManager.$weather
+            .receive(on: RunLoop.main)
+            .assign(to: \.weather, on: self)
+            .store(in: &cancellables)
+
+        bluetoothManager.$devices
+            .receive(on: RunLoop.main)
+            .assign(to: \.bluetoothDevices, on: self)
             .store(in: &cancellables)
 
         // Auto-expand to now-playing when a track starts
@@ -170,20 +191,36 @@ class IslandViewModel: ObservableObject {
         return h > 0 ? h : kNotchHeight
     }
 
+    // Hover preview: +15 % wider, +20 % taller than the physical notch
+    private var hoverWidth:  CGFloat { notchWidth  * kHoverWidthMultiplier  }
+    private var hoverHeight: CGFloat { notchHeight * kHoverHeightMultiplier }
+
     var islandWidth: CGFloat {
-        state.isExpanded ? kIslandExpandedWidth : notchWidth
+        switch state {
+        case .compact:  return isHovering ? hoverWidth  : notchWidth
+        case .expanded: return kIslandExpandedWidth
+        }
     }
 
     var islandHeight: CGFloat {
-        state.isExpanded ? kIslandExpandedHeight : notchHeight
+        switch state {
+        case .compact:  return isHovering ? hoverHeight : notchHeight
+        case .expanded: return kIslandExpandedHeight
+        }
     }
 
     // Hit-test rect in NSView coords (origin bottom-left).
-    // Add a small buffer in compact mode so hovering near the notch edge
-    // registers before the visual boundary.
+    // Always sized to the hover preview so the tracking area is stable —
+    // the mouse won't escape and collapse the preview while reading it.
     var pillRectInWindow: CGRect {
-        let w = islandWidth  + (state.isExpanded ? 0 : 16)
-        let h = islandHeight + (state.isExpanded ? 0 :  8)
+        if state.isExpanded {
+            let x = (kWindowWidth - kIslandExpandedWidth) / 2
+            let y = kWindowHeight - kIslandExpandedHeight
+            return CGRect(x: x, y: y, width: kIslandExpandedWidth, height: kIslandExpandedHeight)
+        }
+        // Use hover dimensions as floor so tracking area never shrinks below the preview
+        let w = hoverWidth
+        let h = hoverHeight
         let x = (kWindowWidth - w) / 2
         let y = kWindowHeight - h
         return CGRect(x: x, y: y, width: w, height: h)

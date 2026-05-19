@@ -72,12 +72,10 @@ let kIslandExpandedWidth: CGFloat  = 380
 let kIslandExpandedHeight: CGFloat = 142
 let kIslandCornerRadius: CGFloat   = 14  // fixed, not height/2
 
-// Hover preview dimensions — island expands from notch to show contextual snippets
-let kHoverPreviewWidth:  CGFloat = 300
-let kHoverPreviewHeight: CGFloat = 78
-
-// Kept for compatibility (no longer used for scale, now drives size change)
-let kHoverScale: CGFloat = 1.0
+// Hover preview grows 15% wider and 20% taller than the physical notch.
+// Computed dynamically in IslandViewModel from the real notch dimensions.
+let kHoverWidthMultiplier:  CGFloat = 1.15
+let kHoverHeightMultiplier: CGFloat = 1.20
 
 // Calendar event
 struct CalendarEventInfo: Identifiable {
