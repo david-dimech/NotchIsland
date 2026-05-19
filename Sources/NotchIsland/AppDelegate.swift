@@ -1,8 +1,10 @@
 import AppKit
+import SwiftUI
 
 class AppDelegate: NSObject, NSApplicationDelegate {
     private var panel: NotchPanel?
     private var statusItem: NSStatusItem?
+    private var settingsWindow: NSWindow?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         let vm = IslandViewModel.shared
@@ -11,7 +13,6 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
         setupMenuBarItem()
 
-        // Re-position if the user switches displays or resolution
         NotificationCenter.default.addObserver(
             self,
             selector: #selector(repositionPanel),
@@ -35,25 +36,52 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
         let menu = NSMenu()
 
-        let nowPlayingItem = NSMenuItem(title: "Now Playing", action: #selector(showNowPlaying), keyEquivalent: "1")
-        let statsItem      = NSMenuItem(title: "System Stats", action: #selector(showStats), keyEquivalent: "2")
-        let timerItem      = NSMenuItem(title: "Timer", action: #selector(showTimer), keyEquivalent: "3")
-        menu.addItem(nowPlayingItem)
-        menu.addItem(statsItem)
-        menu.addItem(timerItem)
+        let modules: [(String, String, Int)] = [
+            ("Media",     "1", 0),
+            ("Calendar",  "2", 1),
+            ("Battery",   "3", 2),
+            ("Timer",     "4", 3),
+            ("Weather",   "5", 4),
+            ("Bluetooth", "6", 5),
+        ]
+        for (title, key, _) in modules {
+            let item = NSMenuItem(title: title, action: #selector(showModule(_:)), keyEquivalent: key)
+            item.tag = modules.firstIndex(where: { $0.0 == title })!
+            menu.addItem(item)
+        }
+
+        menu.addItem(.separator())
+        menu.addItem(NSMenuItem(title: "Settings…", action: #selector(openSettings), keyEquivalent: ","))
         menu.addItem(.separator())
         menu.addItem(NSMenuItem(title: "Quit", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q"))
 
         statusItem?.menu = menu
     }
 
-    @objc private func showNowPlaying() {
-        Task { @MainActor in IslandViewModel.shared.toggle(.nowPlaying) }
+    @objc private func showModule(_ sender: NSMenuItem) {
+        let all = IslandModule.allCases
+        let idx = sender.tag
+        guard idx < all.count else { return }
+        let mod = all[idx]
+        Task { @MainActor in IslandViewModel.shared.toggle(mod) }
     }
-    @objc private func showStats() {
-        Task { @MainActor in IslandViewModel.shared.toggle(.systemStats) }
-    }
-    @objc private func showTimer() {
-        Task { @MainActor in IslandViewModel.shared.toggle(.timer) }
+
+    @objc private func openSettings() {
+        if settingsWindow == nil {
+            let view = SettingsView(settings: SettingsManager.shared)
+            let vc   = NSHostingController(rootView: view)
+            let win  = NSWindow(contentViewController: vc)
+            win.title = "NotchIsland Settings"
+            win.styleMask = [.titled, .closable, .fullSizeContentView]
+            win.titlebarAppearsTransparent = true
+            win.titleVisibility = .hidden
+            win.setContentSize(NSSize(width: 300, height: 380))
+            win.isMovableByWindowBackground = true
+            win.center()
+            win.appearance = NSAppearance(named: .darkAqua)
+            settingsWindow = win
+        }
+        settingsWindow?.makeKeyAndOrderFront(nil)
+        NSApp.activate(ignoringOtherApps: true)
     }
 }

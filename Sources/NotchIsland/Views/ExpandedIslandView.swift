@@ -4,16 +4,20 @@ struct ExpandedIslandView: View {
     let module: IslandModule
     @ObservedObject var viewModel: IslandViewModel
 
-    @State private var moduleIndex: Int  = 0
+    @State private var moduleIndex: Int    = 0
     @State private var dragOffset: CGFloat = 0
     @State private var lastDeltaX: CGFloat = 0
 
-    private let modules: [IslandModule] = [.nowPlaying, .calendar, .systemStats, .timer, .weather, .bluetooth]
+    @ObservedObject private var settings = SettingsManager.shared
+
+    private var modules: [IslandModule] { settings.enabledModules }
 
     // Crisp spring for page snapping — feels like a card flicking into place
     private let snapSpring = Animation.interpolatingSpring(
         mass: 1, stiffness: 500, damping: 40
     )
+
+    private var safeIndex: Int { modules.isEmpty ? 0 : min(moduleIndex, modules.count - 1) }
 
     var body: some View {
         VStack(spacing: 0) {
@@ -35,9 +39,14 @@ struct ExpandedIslandView: View {
                     }
                 }
                 // No .animation modifier — withAnimation drives all transitions.
-                .offset(x: -CGFloat(moduleIndex) * w + dragOffset)
+                .offset(x: -CGFloat(safeIndex) * w + dragOffset)
             }
             .clipped()
+        }
+        .onChange(of: modules.count) { _, count in
+            // Clamp index when a module is hidden from settings
+            let clamped = min(moduleIndex, max(0, count - 1))
+            if clamped != moduleIndex { withAnimation(snapSpring) { moduleIndex = clamped } }
         }
         .onAppear {
             moduleIndex = modules.firstIndex(of: module) ?? 0
