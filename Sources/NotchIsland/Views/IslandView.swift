@@ -51,17 +51,18 @@ struct IslandView: View {
 
     private var topRadius: CGFloat {
         switch viewModel.state {
-        case .compact, .alert, .peek: return 0
-        case .expanded:               return kIslandCornerRadius
+        case .compact, .alert, .mailDrop, .peek: return 0
+        case .expanded:                          return kIslandCornerRadius
         }
     }
 
     private var bottomRadius: CGFloat {
         switch viewModel.state {
-        case .compact:  return kNotchBottomRadius
-        case .alert:    return kNotchBottomRadius
-        case .peek:     return kIslandCornerRadius
-        case .expanded: return kIslandCornerRadius
+        case .compact:            return kNotchBottomRadius
+        case .alert:              return kNotchBottomRadius
+        case .mailDrop:           return kIslandCornerRadius
+        case .peek:               return kIslandCornerRadius
+        case .expanded:           return kIslandCornerRadius
         }
     }
 
@@ -82,6 +83,8 @@ struct IslandView: View {
             }
         case .alert:
             AlertPreviewView(viewModel: viewModel)
+        case .mailDrop(let msg):
+            MailDropView(message: msg, viewModel: viewModel)
         case .peek:
             PeekView(viewModel: viewModel)
         case .expanded(let module):
@@ -96,9 +99,11 @@ struct IslandView: View {
         case .compact:
             viewModel.expand(to: viewModel.contextManager.suggestedModule)
         case .alert:
-            // Dismiss alert queue and jump to full dashboard
             viewModel.alertManager.clearAll()
             viewModel.expand(to: viewModel.contextManager.suggestedModule)
+        case .mailDrop:
+            viewModel.dismissMailDrop()
+            viewModel.expand(to: .gmail)
         case .peek:
             viewModel.expand(to: viewModel.peekTargetModule)
         case .expanded:

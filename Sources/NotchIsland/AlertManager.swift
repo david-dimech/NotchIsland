@@ -3,18 +3,25 @@ import Foundation
 // MARK: – Alert model
 
 struct AlertInfo: Equatable, Identifiable {
-    let id:        UUID
-    let icon:      String   // SF Symbol name
-    let text:      String   // enforced ≤ 25 characters at init
-    let source:    String   // display name of the originating app / subsystem
-    let actionURL: URL?     // optional join/open CTA shown as a button
+    let id:             UUID
+    let icon:           String   // SF Symbol name
+    let text:           String   // enforced ≤ 25 characters at init
+    let source:         String   // display name of the originating app / subsystem
+    let actionURL:      URL?     // optional URL-based CTA (opens in browser)
+    let actionLabel:    String?  // button label for either URL or callback action
+    let actionCallback: (() -> Void)?  // non-URL action (e.g. copy to clipboard)
 
-    init(icon: String, text: String, source: String, actionURL: URL? = nil) {
-        self.id        = UUID()
-        self.icon      = icon
-        self.text      = String(text.prefix(25))
-        self.source    = source
-        self.actionURL = actionURL
+    init(icon: String, text: String, source: String,
+         actionURL: URL? = nil,
+         actionLabel: String? = nil,
+         actionCallback: (() -> Void)? = nil) {
+        self.id             = UUID()
+        self.icon           = icon
+        self.text           = String(text.prefix(25))
+        self.source         = source
+        self.actionURL      = actionURL
+        self.actionLabel    = actionLabel
+        self.actionCallback = actionCallback
     }
 
     static func == (lhs: AlertInfo, rhs: AlertInfo) -> Bool { lhs.id == rhs.id }
@@ -38,8 +45,14 @@ final class AlertManager: ObservableObject {
     // MARK: – Public API
 
     /// Enqueue a new alert. Immediately visible if the queue is empty.
-    func post(icon: String, text: String, source: String, actionURL: URL? = nil) {
-        queue.append(AlertInfo(icon: icon, text: text, source: source, actionURL: actionURL))
+    func post(icon: String, text: String, source: String,
+              actionURL: URL? = nil,
+              actionLabel: String? = nil,
+              actionCallback: (() -> Void)? = nil) {
+        queue.append(AlertInfo(icon: icon, text: text, source: source,
+                               actionURL: actionURL,
+                               actionLabel: actionLabel,
+                               actionCallback: actionCallback))
         if current == nil { advance() }
     }
 

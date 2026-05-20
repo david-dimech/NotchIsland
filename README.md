@@ -4,41 +4,60 @@ A macOS Dynamic Island–style overlay that lives in your MacBook Pro's notch. I
 
 ---
 
+## Terminology
+
+| Term | Description |
+|---|---|
+| **Notch** | Idle state — matches the physical MacBook notch cutout |
+| **Glance** | Hover preview — quick info at a glance without clicking |
+| **Drop** | Proactive mini notification that drops from the Notch |
+| **Mail Drop** | Rich animated email notification card |
+| **Island** | Fully expanded modular dashboard |
+| **Widget** | Individual content panel within the Island |
+
+---
+
 ## Features
 
-### Always-on compact state
+### Notch (always-on compact)
 The notch is invisible at rest. It pulses to life when something needs your attention.
 
-### Hover preview (Peek)
-Hover over the notch to see a 380 × 120 pt summary panel:
-- **Music playing** — artwork, track title, artist, and play/pause/skip controls
+### Glance (hover preview)
+Hover over the notch for an instant summary:
+- **Pending emails** — dismissable new-mail notifications (doesn't mark as read)
+- **Music playing** — artwork, title, artist, and transport controls
 - **Upcoming event** — title and time; Google Meet events show a **Join** button
 - **Focus task** — your highest-priority Todoist task
 - **Weather** — current conditions and city
 
-### Alert notifications
+### Drop (alert notifications)
 The notch briefly expands to show a notification when:
-- A new Todoist task appears on the next sync
-- A new primary Gmail message arrives
-- A calendar event starts in 15 minutes (Google Meet events include a **Join** button)
-- A Todoist task becomes overdue
+- A calendar event starts in 15 minutes (Google Meet → **Join** button)
+- A Todoist task becomes overdue or is newly added
 - A system notification arrives (when Notification Intercept is enabled)
 
-### Expanded widgets
-Click the notch (or tap while hovering) to open the full dashboard. Swipe left/right or use the trackpad pinch to resize.
+### Mail Drop (rich email notification)
+When a new email arrives, the notch animates into a full-width card showing sender, subject, and snippet. The left edge glows with a slow hue-cycling accent colour. Tap to open the email; tap × to dismiss without marking as read.
+
+**OTP / Verification codes** — when a new email contains a verification code, a special **Copy** button appears in the notification. You can also copy any code directly from the Gmail inbox list.
+
+### Island (expanded dashboard)
+Click the notch or tap while hovering to open the full dashboard. Swipe left/right or pinch to resize (0.75× – 1.60×; your preferred size is remembered).
 
 | Widget | What it shows |
 |---|---|
-| **Media** | Album art, scrub bar, transport controls, click art/title to open source app |
-| **Calendar** | Local and Google Calendar events grouped by date with start–end times and Meet join buttons |
-| **Todoist** | Today / Upcoming / Inbox tabs; tap a task to set priority, reschedule, or delete |
-| **Gmail** | Primary inbox; long-press a message for an inline body preview with mark-read / archive |
-| **Weather** | Current conditions + Morning / Afternoon / Evening segments with precipitation and wind |
-| **Timer** | Pomodoro-style focus timer with presets (1 / 5 / 15 / 25 / 45 min) and custom duration |
-| **System** | Battery, CPU, RAM, network |
+| **Media** | Album art with animated gradient background, scrub bar, transport controls |
+| **Calendar** | Google + local events grouped by date; long-press for details, guests, RSVP status |
+| **Gmail** | Primary inbox; OTP codes shown inline with one-tap copy; long-press for full body preview |
+| **Todoist** | Today / Upcoming / Inbox; tap a task to prioritise / reschedule / delete |
+| **Weather** | Current conditions + Morning / Afternoon / Evening segments (precipitation, wind) |
+| **Stats** | CPU, RAM, Disk gauges + live network upload/download speed + battery |
+| **Quick Notes** | Persistent scratch-pad — notes survive app restarts |
+| **Camera Check** | Live camera preview so you can check your appearance before a video call |
+| **Timer** | Pomodoro-style focus timer with presets and custom duration |
 | **Bluetooth** | Battery levels for connected devices |
 | **Music Tools** | Chord reference and scale helper |
-| **Settings** | Toggle and reorder widgets, connect Google, set weather city |
+| **Settings** | Toggle and reorder widgets, connect Google, set weather city, configure default widget |
 
 ---
 
@@ -49,54 +68,55 @@ Click the notch (or tap while hovering) to open the full dashboard. Swipe left/r
 - MacBook Pro with a notch (2021 or later)
 
 ### Installation
-1. Clone the repository and open it in Xcode or build with Swift Package Manager:
+1. Clone the repository and build:
    ```
    swift build -c release
    ```
 2. Copy the built app to `/Applications`.
 3. Launch **NotchIsland** — it appears in your menu bar with no main window.
 
-### Optional integrations
-
-#### Google Calendar and Gmail
+### Google Calendar & Gmail
 1. Create a project at [console.cloud.google.com](https://console.cloud.google.com).
 2. Enable the **Google Calendar API** and **Gmail API**.
 3. Create an **OAuth 2.0 Desktop** client credential.
 4. Add yourself as a test user on the OAuth consent screen.
-5. Copy `Sources/NotchIsland/Secrets.swift.template` to `Sources/NotchIsland/Secrets.swift` and fill in your client ID and secret.
+5. Copy `Sources/NotchIsland/Secrets.swift.template` → `Secrets.swift` and fill in your client ID and secret.
 6. Rebuild and launch. Go to **Settings → Google → Connect with Google**.
 
-#### Todoist
-1. Open [app.todoist.com/app/settings/integrations/developer](https://app.todoist.com/app/settings/integrations/developer).
-2. Copy your API token.
-3. Paste it into **Settings → Todoist → API Token**.
+### Todoist
+1. Open [app.todoist.com → Settings → Integrations → Developer](https://app.todoist.com/app/settings/integrations/developer).
+2. Copy your API token and paste it into **Settings → Todoist → API Token**.
 
-#### Weather city (optional)
-By default weather uses your IP location. To override, type a city name in **Settings → Weather → City**.
+### Weather city (optional)
+By default weather uses your IP location. Override in **Settings → Weather → City**.
 
-#### Launch at login
+### Launch at login
 Toggle **Settings → General → Launch at Login**.
 
 ---
 
-## Usage tips
+## Usage
 
 | Interaction | Action |
 |---|---|
-| Hover over notch | Open peek preview |
-| Click notch / peek | Open expanded widget |
-| Swipe left / right | Switch between widgets |
-| Pinch on trackpad | Resize the expanded island (0.75× – 1.60×) |
-| Click album art or track title | Open the music source app |
-| Long-press an email | Preview the full message inline |
-| Tap a Todoist task | Open inline priority / reschedule / delete bar |
-| Click outside the island | Dismiss and return to compact |
+| Hover over notch | Open Glance preview |
+| Click notch / Glance | Open Island |
+| Swipe left / right | Switch between Widgets |
+| Pinch on trackpad | Resize the Island (remembered on restart) |
+| Click album art | Open the music source app |
+| Long-press email row | Preview full message inline |
+| Tap Mail Drop body | Open email in browser |
+| Tap × on Mail Drop | Dismiss without marking as read |
+| Tap × on Glance email | Dismiss from notification area |
+| Long-press calendar event | Detail overlay with location, description, guests |
+| Tap OTP pill in Gmail | Copy code to clipboard |
+| Click outside the Island | Dismiss |
 
 ---
 
 ## Privacy
-
-- No analytics, no telemetry, no network calls except to the services you explicitly connect.
-- Google tokens are stored in macOS Keychain (`ni.gcal.*` keys) and never leave the device.
-- The Todoist API token is stored in `UserDefaults` (sandboxless app, local only).
-- Weather uses [Open-Meteo](https://open-meteo.com) (no API key required) and [ip-api.com](https://ip-api.com) for IP-based location.
+- No analytics, telemetry, or background network calls except to explicitly connected services.
+- Google OAuth tokens stored in `UserDefaults` (no sandbox — local machine only).
+- Todoist API token stored in `UserDefaults`.
+- Camera Check — video never leaves your device; no capture output is added to the session.
+- Weather via [Open-Meteo](https://open-meteo.com) (no API key) and [ip-api.com](https://ip-api.com) for IP location.

@@ -5,21 +5,32 @@ struct NowPlayingView: View {
     private var info: NowPlayingInfo { viewModel.nowPlaying }
 
     var body: some View {
-        HStack(spacing: 12) {
-            artwork
-            VStack(alignment: .leading, spacing: 5) {
-                trackMeta
-                ScrubBar(
-                    elapsed:  info.elapsed,
-                    duration: info.duration,
-                    onScrub:  { viewModel.nowPlayingManager.seekTo($0) }
-                )
-                timeRow
+        ZStack {
+            // Animated gradient background derived from album art
+            if let img = info.artwork {
+                ArtworkGradientView(image: img)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                    .transition(.opacity)
+                    .animation(.easeInOut(duration: 1.0), value: info.artwork != nil)
             }
-            .frame(maxWidth: .infinity, alignment: .leading)
-            controls
+
+            HStack(spacing: 12) {
+                artwork
+                VStack(alignment: .leading, spacing: 5) {
+                    trackMeta
+                    ScrubBar(
+                        elapsed:  info.elapsed,
+                        duration: info.duration,
+                        onScrub:  { viewModel.nowPlayingManager.seekTo($0) }
+                    )
+                    timeRow
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                controls
+            }
+            .padding(.horizontal, 14)
         }
-        .padding(.horizontal, 14)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 

@@ -161,6 +161,8 @@ struct ExpandedIslandView: View {
         case .music:       MusicView()
         case .todoist:     TodoistView(viewModel: viewModel)
         case .gmail:       GmailView(viewModel: viewModel)
+        case .notes:       NotesView()
+        case .camera:      CameraCheckView()
         case .settings:    IslandSettingsView()
         }
     }
@@ -199,7 +201,10 @@ struct ExpandedIslandView: View {
             }
             lastDeltaX = 0
 
-            if next != oldIndex { viewModel.expand(to: modules[next]) }
+            if next != oldIndex {
+                NSHapticFeedbackManager.defaultPerformer.perform(.alignment, performanceTime: .default)
+                viewModel.expand(to: modules[next])
+            }
 
         default:
             break

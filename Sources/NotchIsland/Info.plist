@@ -10,6 +10,10 @@
     <string>NotchIsland shows your upcoming events in the Dynamic Island.</string>
     <key>NSCalendarsUsageDescription</key>
     <string>NotchIsland shows your upcoming events in the Dynamic Island.</string>
+    <key>NSCameraUsageDescription</key>
+    <string>NotchIsland Camera Check lets you preview your appearance before joining a video call.</string>
+    <key>NSMicrophoneUsageDescription</key>
+    <string>NotchIsland does not use the microphone but Camera Check requires this key on macOS.</string>
     <key>NSAppTransportSecurity</key>
     <dict>
         <key>NSAllowsArbitraryLoads</key>

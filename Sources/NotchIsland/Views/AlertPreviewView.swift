@@ -30,12 +30,24 @@ struct AlertPreviewView: View {
 
             Spacer(minLength: 0)
 
-            if let url = alert.actionURL {
+            if let callback = alert.actionCallback {
+                Button {
+                    callback()
+                    viewModel.alertManager.dismiss()
+                } label: {
+                    Text(alert.actionLabel ?? "Action")
+                        .font(.system(size: 9, weight: .semibold))
+                        .foregroundStyle(.white)
+                        .padding(.horizontal, 7).padding(.vertical, 3)
+                        .background(RoundedRectangle(cornerRadius: 5).fill(Color.orange.opacity(0.8)))
+                }
+                .buttonStyle(.plain)
+            } else if let url = alert.actionURL {
                 Button {
                     NSWorkspace.shared.open(url)
                     viewModel.alertManager.dismiss()
                 } label: {
-                    Text("Join")
+                    Text(alert.actionLabel ?? "Join")
                         .font(.system(size: 9, weight: .semibold))
                         .foregroundStyle(.white)
                         .padding(.horizontal, 7).padding(.vertical, 3)

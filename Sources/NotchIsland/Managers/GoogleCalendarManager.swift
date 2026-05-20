@@ -4,6 +4,13 @@ import os.log
 
 // MARK: – Data models
 
+struct GCalEventAttendee {
+    let name: String
+    let email: String
+    let status: String   // "accepted" | "declined" | "tentative" | "needsAction"
+    let isOrganizer: Bool
+}
+
 struct GCalEvent: Identifiable {
     let id: String
     let title: String
@@ -11,7 +18,10 @@ struct GCalEvent: Identifiable {
     let end: Date
     let isAllDay: Bool
     let location: String?
-    let hangoutLink: String?   // Google Meet URL if present
+    let description: String?
+    let hangoutLink: String?      // Google Meet URL if present
+    let htmlLink: String?         // Open event in Google Calendar web
+    let attendees: [GCalEventAttendee]
 }
 
 // Raw decodable structs kept private
@@ -19,10 +29,20 @@ private struct GCalEventsResponse: Decodable { let items: [GCalRawEvent] }
 private struct GCalRawEvent: Decodable {
     let id: String
     let summary: String?
+    let description: String?
     let location: String?
     let hangoutLink: String?
+    let htmlLink: String?
     let start: GCalRawDT
     let end: GCalRawDT
+    let attendees: [GCalRawAttendee]?
+}
+private struct GCalRawAttendee: Decodable {
+    let email: String?
+    let displayName: String?
+    let responseStatus: String?
+    let organizer: Bool?
+    let `self`: Bool?
 }
 private struct GCalRawDT: Decodable {
     let dateTime: String?   // RFC3339 with offset e.g. "2025-05-20T10:00:00+01:00"
@@ -48,10 +68,22 @@ private struct GCalRawDT: Decodable {
 private extension GCalRawEvent {
     func toEvent() -> GCalEvent? {
         guard let s = start.resolved, let e = end.resolved else { return nil }
+        let mappedAttendees = (attendees ?? []).map { a in
+            GCalEventAttendee(
+                name:        a.displayName ?? a.email ?? "",
+                email:       a.email ?? "",
+                status:      a.responseStatus ?? "needsAction",
+                isOrganizer: a.organizer ?? false
+            )
+        }
         return GCalEvent(id: id, title: summary ?? "Untitled",
                          start: s, end: e,
                          isAllDay: start.dateTime == nil,
-                         location: location, hangoutLink: hangoutLink)
+                         location: location,
+                         description: description,
+                         hangoutLink: hangoutLink,
+                         htmlLink: htmlLink,
+                         attendees: mappedAttendees)
     }
 }
 

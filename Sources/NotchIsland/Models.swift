@@ -19,9 +19,12 @@ struct NowPlayingInfo: Equatable {
 }
 
 struct SystemStats {
-    var cpuUsage: Double = 0      // 0.0–1.0
-    var memoryUsage: Double = 0   // 0.0–1.0
-    var batteryLevel: Double = 0  // 0.0–1.0
+    var cpuUsage:    Double = 0      // 0.0–1.0
+    var memoryUsage: Double = 0      // 0.0–1.0
+    var diskUsage:   Double = 0      // 0.0–1.0
+    var netUpBps:    Double = 0      // bytes/sec upload
+    var netDownBps:  Double = 0      // bytes/sec download
+    var batteryLevel: Double = 0     // 0.0–1.0
     var isCharging: Bool = false
     var hasBattery: Bool = false
 }
@@ -55,19 +58,23 @@ enum IslandModule: String, Equatable, Hashable, CaseIterable {
     case music       = "music"
     case todoist     = "todoist"
     case gmail       = "gmail"
+    case notes       = "notes"
+    case camera      = "camera"
     case settings    = "settings"   // always last; not user-reorderable
 
     var displayName: String {
         switch self {
         case .nowPlaying:  return "Media"
         case .calendar:    return "Calendar"
-        case .systemStats: return "Battery"
+        case .systemStats: return "Stats"
         case .timer:       return "Timer"
         case .weather:     return "Weather"
         case .bluetooth:   return "Bluetooth"
         case .music:       return "Music Tools"
         case .todoist:     return "Todoist"
         case .gmail:       return "Gmail"
+        case .notes:       return "Quick Notes"
+        case .camera:      return "Camera Check"
         case .settings:    return "Settings"
         }
     }
@@ -76,34 +83,49 @@ enum IslandModule: String, Equatable, Hashable, CaseIterable {
         switch self {
         case .nowPlaying:  return "music.note"
         case .calendar:    return "calendar"
-        case .systemStats: return "battery.100"
+        case .systemStats: return "chart.bar.fill"
         case .timer:       return "timer"
         case .weather:     return "cloud.sun.fill"
         case .bluetooth:   return "bluetooth"
         case .music:       return "music.quarternote.3"
         case .todoist:     return "checkmark.circle"
         case .gmail:       return "envelope"
+        case .notes:       return "note.text"
+        case .camera:      return "camera.fill"
         case .settings:    return "gear"
         }
     }
 
-    // Taller for list-heavy modules that need room to show multiple rows.
+    // Taller for list-heavy or multi-row modules.
     var preferredExpandedHeight: CGFloat {
         switch self {
-        case .todoist, .gmail, .calendar: return 280
+        case .todoist, .gmail, .calendar, .notes: return 280
+        case .systemStats: return 200
+        case .camera: return 260
         default: return kIslandExpandedHeight
         }
     }
 }
 
+// MARK: – NotchIsland state terminology
+//
+// Notch       (.compact)            — idle, matches the physical MacBook notch cutout
+// Drop        (.alert)              — proactive mini notification that drops from the Notch
+// Mail Drop   (.mailDrop)           — rich animated email notification card
+// Glance      (.peek)               — hover preview — info at a glance without clicking
+// Island      (.expanded)           — full modular dashboard
+// Widget                            — individual content panel within the Island
+
 enum IslandState: Equatable {
     /// Physical notch footprint — idle or passively-active.
     case compact
-    /// Proactive alert bubble: +15 % wider, +10 % taller than notch.
+    /// Proactive alert bubble (Drop): +15 % wider, +10 % taller than notch.
     case alert(AlertInfo)
-    /// Reactive hover peek: medium panel shown when a background task is active.
+    /// Rich animated email notification (Mail Drop).
+    case mailDrop(GmailMessage)
+    /// Hover preview (Glance): medium panel shown on hover.
     case peek
-    /// Full modular dashboard.
+    /// Full modular dashboard (Island).
     case expanded(IslandModule)
 
     var isExpanded: Bool {
@@ -114,8 +136,8 @@ enum IslandState: Equatable {
     /// True for any state that has grown beyond the raw notch footprint.
     var isRaised: Bool {
         switch self {
-        case .compact:                  return false
-        case .alert, .peek, .expanded:  return true
+        case .compact:                              return false
+        case .alert, .mailDrop, .peek, .expanded:  return true
         }
     }
 }
@@ -128,6 +150,7 @@ let kNotchWidth: CGFloat        = 250   // compact — aligns with physical notc
 let kNotchHeight: CGFloat       = 38
 let kIslandExpandedWidth: CGFloat  = 380
 let kIslandExpandedHeight: CGFloat = 160
+let kMailDropHeight: CGFloat       = 100  // Mail Drop — rich email notification card
 let kIslandCornerRadius: CGFloat   = 14  // fixed, not height/2
 
 // Hover preview grows 15% wider and 20% taller than the physical notch.

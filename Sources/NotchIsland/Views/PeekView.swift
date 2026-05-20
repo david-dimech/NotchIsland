@@ -56,10 +56,16 @@ struct PeekView: View {
         }
     }
 
-    // MARK: – Context layout (hover without active timer)
+    // MARK: – Context layout (Glance — hover without active timer)
 
     private var contextLayout: some View {
         VStack(spacing: 0) {
+            // Pending email notifications (dismissable, not mark-as-read)
+            if !viewModel.pendingEmailNotifications.isEmpty {
+                pendingEmailsRow
+                Divider().background(Color.white.opacity(0.07))
+            }
+
             // Now Playing row — prominent if music is playing
             if viewModel.nowPlaying.isPlaying {
                 nowPlayingRow
@@ -76,6 +82,43 @@ struct PeekView: View {
 
     private var hasSecondRow: Bool {
         todoistFocusTask != nil || nextEvent != nil
+    }
+
+    // Pending email notifications — show most recent, with per-email dismiss
+    private var pendingEmailsRow: some View {
+        let msg = viewModel.pendingEmailNotifications[0]
+        return HStack(spacing: 8) {
+            Image(systemName: "envelope.fill")
+                .font(.system(size: 10))
+                .foregroundStyle(.blue.opacity(0.8))
+            VStack(alignment: .leading, spacing: 1) {
+                Text(msg.fromName)
+                    .font(.system(size: 10, weight: .semibold))
+                    .foregroundStyle(.white).lineLimit(1)
+                Text(msg.subject)
+                    .font(.system(size: 9))
+                    .foregroundStyle(.white.opacity(0.5)).lineLimit(1)
+            }
+            Spacer()
+            // Badge for additional pending
+            if viewModel.pendingEmailNotifications.count > 1 {
+                Text("+\(viewModel.pendingEmailNotifications.count - 1)")
+                    .font(.system(size: 8, weight: .bold))
+                    .foregroundStyle(.white.opacity(0.5))
+                    .padding(.horizontal, 4).padding(.vertical, 1)
+                    .background(Capsule().fill(Color.white.opacity(0.12)))
+            }
+            // Dismiss this email from the notification area
+            Button {
+                withAnimation { viewModel.dismissPendingEmail(msg) }
+            } label: {
+                Image(systemName: "xmark")
+                    .font(.system(size: 8, weight: .bold))
+                    .foregroundStyle(.white.opacity(0.35))
+                    .frame(width: 14, height: 14)
+            }.buttonStyle(.plain)
+        }
+        .padding(.vertical, 4)
     }
 
     private var todoistFocusTask: TodoistTask? {

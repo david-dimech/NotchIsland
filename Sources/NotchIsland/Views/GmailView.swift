@@ -32,6 +32,7 @@ struct GmailView: View {
     }
 
     private func openPreview(_ msg: GmailMessage) {
+        NSHapticFeedbackManager.defaultPerformer.perform(.levelChange, performanceTime: .default)
         previewMessage = msg
         previewBody    = nil
         loadingPreview = true
@@ -223,6 +224,8 @@ private struct GmailRow: View {
             : Self.dateFmt.string(from: message.date)
     }
 
+    @State private var copied = false
+
     var body: some View {
         HStack(alignment: .top, spacing: 8) {
             Circle()
@@ -236,8 +239,34 @@ private struct GmailRow: View {
                         .foregroundStyle(message.isUnread ? .white : .white.opacity(0.65))
                         .lineLimit(1)
                     Spacer()
-                    Text(timeLabel)
-                        .font(.system(size: 9)).foregroundStyle(.white.opacity(0.3))
+                    // OTP copy button — shown inline for quick access
+                    if let code = message.otpCode {
+                        Button {
+                            NSPasteboard.general.clearContents()
+                            NSPasteboard.general.setString(code, forType: .string)
+                            withAnimation(.easeInOut(duration: 0.2)) { copied = true }
+                            DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
+                                withAnimation { copied = false }
+                            }
+                        } label: {
+                            HStack(spacing: 3) {
+                                Image(systemName: copied ? "checkmark" : "doc.on.doc")
+                                    .font(.system(size: 8, weight: .medium))
+                                Text(copied ? "Copied" : code)
+                                    .font(.system(size: 8, weight: .semibold))
+                            }
+                            .foregroundStyle(copied ? .green : .orange)
+                            .padding(.horizontal, 5).padding(.vertical, 2)
+                            .background(
+                                RoundedRectangle(cornerRadius: 4)
+                                    .fill((copied ? Color.green : Color.orange).opacity(0.15))
+                            )
+                        }
+                        .buttonStyle(.plain)
+                    } else {
+                        Text(timeLabel)
+                            .font(.system(size: 9)).foregroundStyle(.white.opacity(0.3))
+                    }
                 }
                 Text(message.subject)
                     .font(.system(size: 10, weight: message.isUnread ? .medium : .regular))

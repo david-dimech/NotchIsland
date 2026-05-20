@@ -22,9 +22,16 @@ class IslandViewModel: ObservableObject {
     // MIDI ambient border glow (0 = off, 1 = full intensity).
     @Published var midiGlowOpacity: Double = 0.0
 
-    // Pinch-to-resize scale for expanded island (1.0 = default)
-    @Published var expandedSizeMultiplier: CGFloat = 1.0
+    // Emails the user has not yet dismissed from the Glance notification area.
+    @Published var pendingEmailNotifications: [GmailMessage] = []
+
+    // Pinch-to-resize scale for expanded island — persisted across restarts
+    @Published var expandedSizeMultiplier: CGFloat = {
+        let v = UserDefaults.standard.double(forKey: "ni.sizeMultiplier")
+        return v > 0 ? CGFloat(v) : 1.0
+    }()
     private var pinchBaseMultiplier: CGFloat = 1.0
+    private static let sizeMultKey = "ni.sizeMultiplier"
     private var magnifyMonitor: Any?
 
     let nowPlayingManager       = NowPlayingManager()
@@ -130,10 +137,28 @@ class IslandViewModel: ObservableObject {
             )
         }
 
-        // Gmail: new-message alerts (fires after first fetch when new IDs appear)
+        // Gmail: OTP codes → Drop with Copy button; regular mail → Mail Drop card
         gmailManager.onNewMessage = { [weak self] msg in
-            let text = msg.subject.isEmpty ? msg.fromName : msg.subject
-            self?.alertManager.post(icon: "envelope.fill", text: text, source: msg.fromName)
+            guard let self else { return }
+            if let code = msg.otpCode {
+                self.alertManager.post(
+                    icon: "lock.shield.fill",
+                    text: code,
+                    source: "Verification Code",
+                    actionLabel: "Copy",
+                    actionCallback: {
+                        NSPasteboard.general.clearContents()
+                        NSPasteboard.general.setString(code, forType: .string)
+                    }
+                )
+            } else {
+                // Queue for Glance panel
+                var pending = self.pendingEmailNotifications
+                pending.insert(msg, at: 0)
+                self.pendingEmailNotifications = Array(pending.prefix(5))
+                // Show Mail Drop (unless user is already in expanded Island)
+                self.triggerMailDrop(msg)
+            }
         }
 
         // Notification interceptor: start if enabled, wire incoming banners.
@@ -154,17 +179,27 @@ class IslandViewModel: ObservableObject {
             self.alertManager.post(icon: "bell.fill", text: text, source: notif.appName)
         }
 
+        // Persist expandedSizeMultiplier across sessions
+        $expandedSizeMultiplier
+            .debounce(for: .seconds(0.5), scheduler: RunLoop.main)
+            .sink { UserDefaults.standard.set(Double($0), forKey: Self.sizeMultKey) }
+            .store(in: &cancellables)
+
         // Pinch-to-resize the expanded island.
         magnifyMonitor = NSEvent.addLocalMonitorForEvents(matching: .magnify) { [weak self] event in
             guard let self, case .expanded = self.state else { return event }
             if event.phase == .began {
                 MainActor.assumeIsolated { self.pinchBaseMultiplier = self.expandedSizeMultiplier }
             }
-            let raw  = self.pinchBaseMultiplier * (1.0 + event.magnification)
-            let next = min(max(raw, 0.75), 1.60)
+            let raw      = self.pinchBaseMultiplier * (1.0 + event.magnification)
+            let clamped  = min(max(raw, 0.75), 1.60)
+            let hitBound = raw != clamped   // snapped to min or max
             MainActor.assumeIsolated {
+                if hitBound {
+                    NSHapticFeedbackManager.defaultPerformer.perform(.alignment, performanceTime: .default)
+                }
                 withAnimation(.interactiveSpring(response: 0.18, dampingFraction: 0.9)) {
-                    self.expandedSizeMultiplier = next
+                    self.expandedSizeMultiplier = clamped
                 }
             }
             return nil  // consume — prevent system zoom
@@ -233,21 +268,57 @@ class IslandViewModel: ObservableObject {
     func expand(to module: IslandModule) {
         alertManager.clearAll()
         alertReturnTask?.cancel()
+        NSHapticFeedbackManager.defaultPerformer.perform(.levelChange, performanceTime: .default)
         withAnimation(Self.expandSpring) { state = .expanded(module) }
         startClickOutsideMonitor()
+        SettingsManager.shared.saveLastWidget(module)
     }
 
     func collapse() {
         alertManager.clearAll()
         alertReturnTask?.cancel()
         alertInterruptedPeek = false
+        NSHapticFeedbackManager.defaultPerformer.perform(.alignment, performanceTime: .default)
         withAnimation(Self.collapseSpring) { state = .compact }
         stopClickOutsideMonitor()
     }
 
+    // Show a Mail Drop — only when the Island is idle (Notch or Glance).
+    func triggerMailDrop(_ msg: GmailMessage) {
+        switch state {
+        case .expanded: return   // never interrupt the user's open Island
+        default: break
+        }
+        alertReturnTask?.cancel()
+        NSHapticFeedbackManager.defaultPerformer.perform(.generic, performanceTime: .default)
+        withAnimation(Self.alertSpring) { state = .mailDrop(msg) }
+        startClickOutsideMonitor()
+        // Auto-dismiss after 8 s
+        alertReturnTask = Task { [weak self] in
+            try? await Task.sleep(for: .seconds(8))
+            guard !Task.isCancelled else { return }
+            await MainActor.run {
+                guard case .mailDrop = self?.state else { return }
+                withAnimation(Self.collapseSpring) { self?.state = .compact }
+                if self?.isHovering == false { self?.stopClickOutsideMonitor() }
+            }
+        }
+    }
+
+    func dismissMailDrop() {
+        alertReturnTask?.cancel()
+        guard case .mailDrop = state else { return }
+        withAnimation(Self.collapseSpring) { state = .compact }
+        if !isHovering { stopClickOutsideMonitor() }
+    }
+
+    func dismissPendingEmail(_ msg: GmailMessage) {
+        pendingEmailNotifications.removeAll { $0.id == msg.id }
+    }
+
     func toggle(_ module: IslandModule) {
         switch state {
-        case .compact, .alert, .peek:
+        case .compact, .alert, .mailDrop, .peek:
             expand(to: module)
         case .expanded(let current) where current == module:
             collapse()
@@ -256,10 +327,15 @@ class IslandViewModel: ObservableObject {
         }
     }
 
-    // The module to navigate to when the user taps the peek panel.
+    // The module to navigate to when the user taps the Glance or compact Notch.
     var peekTargetModule: IslandModule {
         if timerState.isRunning { return .timer }
-        return contextManager.suggestedModule
+        let context = contextManager.suggestedModule
+        // If context manager returns nowPlaying but nothing is playing, use the saved start widget
+        if context == .nowPlaying && !nowPlaying.isPlaying {
+            return SettingsManager.shared.resolvedStartWidget
+        }
+        return context
     }
 
     // MARK: – Hover → Peek promotion
@@ -271,7 +347,7 @@ class IslandViewModel: ObservableObject {
 
     private func onHoverChanged(_ hovering: Bool) {
         if hovering {
-            // Always promote to peek from idle — gives meaningful preview on every hover.
+            // Promote to Glance (peek) from idle — but not from a Mail Drop.
             guard case .compact = state else { return }
             withAnimation(Self.peekSpring) { state = .peek }
             startClickOutsideMonitor()
@@ -288,9 +364,9 @@ class IslandViewModel: ObservableObject {
     private func handleAlertChange(_ alert: AlertInfo?) {
         if let alert {
             switch state {
-            case .expanded: return  // never interrupt a user-opened dashboard
+            case .expanded: return   // never interrupt a user-opened Island
+            case .mailDrop: return   // don't stack a Drop on top of a Mail Drop
             case .compact:
-                // Record whether we're pre-empting a hovering task session.
                 alertInterruptedPeek = isHovering && hasActiveBackgroundTask
             case .peek:
                 alertInterruptedPeek = true
@@ -433,18 +509,20 @@ class IslandViewModel: ObservableObject {
 
     var islandWidth: CGFloat {
         switch state {
-        case .compact:  return (isHovering || isTimerWarning) ? hoverWidth  : notchWidth
-        case .alert:    return notchWidth * 1.15
-        case .peek:     return kPeekExpandedWidth
-        case .expanded: return (kIslandExpandedWidth * expandedSizeMultiplier).rounded()
+        case .compact:   return (isHovering || isTimerWarning) ? hoverWidth  : notchWidth
+        case .alert:     return notchWidth * 1.15
+        case .mailDrop:  return kIslandExpandedWidth
+        case .peek:      return kPeekExpandedWidth
+        case .expanded:  return (kIslandExpandedWidth * expandedSizeMultiplier).rounded()
         }
     }
 
     var islandHeight: CGFloat {
         switch state {
-        case .compact:  return (isHovering || isTimerWarning) ? hoverHeight : notchHeight
-        case .alert:    return notchHeight * 1.10
-        case .peek:     return kPeekExpandedHeight
+        case .compact:   return (isHovering || isTimerWarning) ? hoverHeight : notchHeight
+        case .alert:     return notchHeight * 1.10
+        case .mailDrop:  return kMailDropHeight
+        case .peek:      return kPeekExpandedHeight
         case .expanded(let mod): return (mod.preferredExpandedHeight * expandedSizeMultiplier).rounded()
         }
     }
@@ -455,10 +533,11 @@ class IslandViewModel: ObservableObject {
             CGRect(x: (kWindowWidth - w) / 2, y: kWindowHeight - h, width: w, height: h)
         }
         switch state {
-        case .expanded: return rect(islandWidth, islandHeight)
-        case .peek:     return rect(kPeekExpandedWidth,   kPeekExpandedHeight)
-        case .alert:    return rect(notchWidth * 1.15,    notchHeight * 1.10)
-        case .compact:  return rect(hoverWidth,           hoverHeight)
+        case .expanded:  return rect(islandWidth, islandHeight)
+        case .peek:      return rect(kPeekExpandedWidth,   kPeekExpandedHeight)
+        case .alert:     return rect(notchWidth * 1.15,    notchHeight * 1.10)
+        case .mailDrop:  return rect(kIslandExpandedWidth, kMailDropHeight)
+        case .compact:   return rect(hoverWidth,           hoverHeight)
         }
     }
 }

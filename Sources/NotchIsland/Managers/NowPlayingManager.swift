@@ -103,20 +103,24 @@ class NowPlayingManager: ObservableObject {
                 // imageWithSize: takes a CGSize struct so must be called via objc_msgSend,
                 // not perform(_:with:) which only handles object pointer arguments.
                 let artRaw = raw["kMRMediaRemoteNowPlayingInfoArtworkData"]
-                if let data = artRaw as? Data {
-                    next.artwork = NSImage(data: data)
+                if let data = artRaw as? Data, let img = NSImage(data: data) {
+                    next.artwork = img
                 } else if let img = artRaw as? NSImage {
                     next.artwork = img
-                } else if let obj = artRaw as AnyObject? {
-                    // MRMediaRemoteArtwork.imageWithSize: takes a CGSize struct.
-                    // perform(_:with:) only handles object args; objc_msgSend is unavailable in
-                    // Swift directly, so we fetch it via dlsym at runtime.
-                    let sel = NSSelectorFromString("imageWithSize:")
-                    if obj.responds(to: sel),
-                       let msgSendPtr = dlsym(dlopen(nil, RTLD_LAZY), "objc_msgSend") {
-                        typealias ImageWithSize = @convention(c) (AnyObject, Selector, CGSize) -> NSImage?
-                        let fn = unsafeBitCast(msgSendPtr, to: ImageWithSize.self)
-                        next.artwork = fn(obj, sel, CGSize(width: 300, height: 300))
+                } else if let obj = artRaw as? NSObject {
+                    // MRMediaRemoteArtwork — try KVC imageData first; avoids passing a CGSize
+                    // struct through objc_msgSend which is unreliable on arm64.
+                    if let imgData = obj.value(forKey: "imageData") as? Data {
+                        next.artwork = NSImage(data: imgData)
+                    }
+                    // Fall back to imageWithSize: if KVC didn't yield an image
+                    if next.artwork == nil {
+                        let sel = NSSelectorFromString("imageWithSize:")
+                        if obj.responds(to: sel),
+                           let fn = dlsym(dlopen(nil, RTLD_LAZY), "objc_msgSend") {
+                            typealias F = @convention(c) (AnyObject, Selector, CGSize) -> NSImage?
+                            next.artwork = unsafeBitCast(fn, to: F.self)(obj, sel, CGSize(width: 600, height: 600))
+                        }
                     }
                 }
 
@@ -150,6 +154,13 @@ class NowPlayingManager: ObservableObject {
                     self.fetchDate      = Date()
                     self.info           = next
                 }
+                Self.fetchArtworkFallbackIfNeeded(next) { [weak self] img in
+                    DispatchQueue.main.async {
+                        guard let self, self.info.title == next.title,
+                              self.info.artwork == nil else { return }
+                        self.info.artwork = img
+                    }
+                }
             }
             // If getPlaying is nil, commit what we have
             if self.getPlaying == nil {
@@ -157,6 +168,13 @@ class NowPlayingManager: ObservableObject {
                     self.elapsedAtFetch = next.elapsed
                     self.fetchDate      = Date()
                     self.info           = next
+                }
+                Self.fetchArtworkFallbackIfNeeded(next) { [weak self] img in
+                    DispatchQueue.main.async {
+                        guard let self, self.info.title == next.title,
+                              self.info.artwork == nil else { return }
+                        self.info.artwork = img
+                    }
                 }
             }
         }
@@ -224,6 +242,34 @@ class NowPlayingManager: ObservableObject {
             """
         )
         return [spotify, music]
+    }
+
+    // Fetches Spotify album art from their CDN using AppleScript artwork url.
+    // Calls back on a background queue — caller must dispatch to main.
+    private static func fetchArtworkFallbackIfNeeded(_ info: NowPlayingInfo,
+                                                      completion: @escaping (NSImage) -> Void) {
+        guard info.artwork == nil, !info.title.isEmpty,
+              !NSRunningApplication.runningApplications(withBundleIdentifier: "com.spotify.client").isEmpty
+        else { return }
+
+        // AppleScript must run on the main thread
+        DispatchQueue.main.async {
+            var err: NSDictionary?
+            let script = """
+            tell application "Spotify"
+                if player state is playing or player state is paused then
+                    return artwork url of current track
+                end if
+            end tell
+            """
+            let desc = NSAppleScript(source: script)?.executeAndReturnError(&err)
+            guard err == nil, let urlStr = desc?.stringValue, !urlStr.isEmpty,
+                  let url = URL(string: urlStr) else { return }
+
+            URLSession.shared.dataTask(with: url) { data, _, _ in
+                if let data, let img = NSImage(data: data) { completion(img) }
+            }.resume()
+        }
     }
 
     // MARK: – Timers

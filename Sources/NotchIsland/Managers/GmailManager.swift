@@ -2,7 +2,7 @@ import AppKit
 import Foundation
 import os.log
 
-struct GmailMessage: Identifiable {
+struct GmailMessage: Identifiable, Equatable {
     let id: String
     let threadId: String
     let from: String        // raw "Name <email>"
@@ -11,6 +11,29 @@ struct GmailMessage: Identifiable {
     let date: Date
     let snippet: String
     let isUnread: Bool
+
+    static func == (lhs: GmailMessage, rhs: GmailMessage) -> Bool { lhs.id == rhs.id }
+
+    // Extracted OTP/verification code, if any.
+    // Only fires when OTP-related keywords are present to avoid false positives on
+    // phone numbers, order numbers, and other incidental digit sequences.
+    var otpCode: String? {
+        let lowered = (subject + " " + snippet).lowercased()
+
+        // Must contain at least one OTP-context keyword
+        let keywords = ["code", "otp", "verification", "verify", "pin", "2fa",
+                        "passcode", "one-time", "one time", "temporary", "access code",
+                        "security code", "confirmation code", "authenticate", "login code"]
+        guard keywords.contains(where: { lowered.contains($0) }) else { return nil }
+
+        let original = subject + " " + snippet
+        // 5–8 digit standalone numbers; exclude those adjacent to phone-number punctuation
+        let pattern = #"(?<![0-9\-\+\(\)\.])\b(\d{5,8})\b(?![0-9\-\+\(\)\.])"#
+        guard let regex = try? NSRegularExpression(pattern: pattern),
+              let match = regex.firstMatch(in: original, range: NSRange(original.startIndex..., in: original)),
+              let range = Range(match.range(at: 1), in: original) else { return nil }
+        return String(original[range])
+    }
 }
 
 @MainActor
@@ -23,20 +46,60 @@ final class GmailManager: ObservableObject {
     weak var authProvider: GoogleCalendarManager?
 
     var onNewMessage: ((GmailMessage) -> Void)?
-    private var knownMessageIDs: Set<String>? = nil  // nil = first fetch, skip alerts
+    private var knownMessageIDs: Set<String>? = nil    // nil = first fetch, skip alerts
+    private var knownAllInboxIDs: Set<String>? = nil   // for OTP scan across all categories
     private var pollTimer: Timer?
+    private var otpTimer:  Timer?
 
     private static let log = Logger(subsystem: "com.notchisland.app", category: "Gmail")
 
-    // Call once after authProvider is set. Polls every 60 s for new messages.
+    // Call once after authProvider is set.
+    // Primary inbox polls every 30 s; all-inbox OTP scan runs every 60 s.
     func startPolling() {
         pollTimer?.invalidate()
-        let t = Timer(timeInterval: 60, repeats: true) { [weak self] _ in
+        let t = Timer(timeInterval: 30, repeats: true) { [weak self] _ in
             guard let self else { return }
             Task { await self.fetchMessages() }
         }
         RunLoop.main.add(t, forMode: .common)
         pollTimer = t
+
+        otpTimer?.invalidate()
+        let ot = Timer(timeInterval: 60, repeats: true) { [weak self] _ in
+            guard let self else { return }
+            Task { await self.fetchOTPScan() }
+        }
+        RunLoop.main.add(ot, forMode: .common)
+        otpTimer = ot
+    }
+
+    // Scans all inbox categories (Promotions, Updates, Social, Forums) for new OTP codes.
+    // Does NOT update the messages array — purely for notification purposes.
+    private func fetchOTPScan() async {
+        guard let token = await authProvider?.validToken() else { return }
+        guard let url = URL(string: "https://gmail.googleapis.com/gmail/v1/users/me/messages?labelIds=INBOX&maxResults=10") else { return }
+        var req = URLRequest(url: url)
+        req.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        guard let (data, resp) = try? await URLSession.shared.data(for: req),
+              (resp as? HTTPURLResponse)?.statusCode == 200,
+              let list = try? JSONDecoder().decode(GmailListResponse.self, from: data),
+              let items = list.messages else { return }
+
+        let currentIDs = Set(items.map(\.id))
+        guard let known = knownAllInboxIDs else {
+            knownAllInboxIDs = currentIDs; return  // first scan — baseline only
+        }
+        let newIDs = currentIDs.subtracting(known)
+        knownAllInboxIDs = currentIDs
+        guard !newIDs.isEmpty else { return }
+
+        for id in newIDs {
+            // Skip if already notified via primary inbox poll
+            if knownMessageIDs?.contains(id) == true { continue }
+            if let msg = await fetchDetail(id: id, token: token), msg.otpCode != nil {
+                onNewMessage?(msg)
+            }
+        }
     }
 
     func fetchMessages() async {

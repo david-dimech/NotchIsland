@@ -41,17 +41,34 @@ class SettingsManager: ObservableObject {
     @Published var notifBypassDND:        Bool
     @Published var notifAllowedApps:      [String]  // empty = allow all
 
-    private static let orderKey         = "ni.widgetOrder"
-    private static let hiddenKey        = "ni.hiddenWidgets"
-    private static let soundKey         = "ni.timerSound"
+    // Widget open behaviour
+    @Published var rememberLastWidget:    Bool        // true = reopen last used widget
+    @Published var defaultWidgetRaw:      String      // rawValue of IslandModule
+
+    var defaultWidget: IslandModule {
+        get { IslandModule(rawValue: defaultWidgetRaw) ?? .nowPlaying }
+        set { defaultWidgetRaw = newValue.rawValue; UserDefaults.standard.set(newValue.rawValue, forKey: Self.defaultWidgetKey) }
+    }
+
+    private static let orderKey          = "ni.widgetOrder"
+    private static let hiddenKey         = "ni.hiddenWidgets"
+    private static let soundKey          = "ni.timerSound"
     private static let todoistTokenKey   = "ni.todoistToken"
     private static let todoistAlertKey   = "ni.todoistAlerts"
-    private static let weatherCityKey   = "ni.weatherCity"
-    private static let notifEnabledKey  = "ni.notifIntercept"
-    private static let notifDNDKey      = "ni.notifBypassDND"
-    private static let notifAppsKey     = "ni.notifApps"
+    private static let weatherCityKey    = "ni.weatherCity"
+    private static let notifEnabledKey   = "ni.notifIntercept"
+    private static let notifDNDKey       = "ni.notifBypassDND"
+    private static let notifAppsKey      = "ni.notifApps"
+    private static let rememberWidgetKey = "ni.rememberWidget"
+    private static let defaultWidgetKey  = "ni.defaultWidget"
+    private static let lastWidgetKey     = "ni.lastWidget"
 
-    // .settings is always pinned last and is not user-reorderable
+    // .settings is always pinned last and is not user-reorderable.
+    // Default order is tuned for everyday use: media → productivity → info → tools.
+    private static let defaultOrder: [IslandModule] = [
+        .nowPlaying, .calendar, .gmail, .todoist,
+        .weather, .systemStats, .notes, .camera, .bluetooth, .music, .timer,
+    ]
     private static let reorderable = IslandModule.allCases.filter { $0 != .settings }
 
     static let availableSounds = [
@@ -68,7 +85,7 @@ class SettingsManager: ObservableObject {
             for mod in Self.reorderable where !loaded.contains(mod) { loaded.append(mod) }
             moduleOrder = loaded
         } else {
-            moduleOrder = Self.reorderable
+            moduleOrder = Self.defaultOrder
         }
 
         if let raw = defaults.stringArray(forKey: Self.hiddenKey) {
@@ -84,6 +101,27 @@ class SettingsManager: ObservableObject {
         notifInterceptEnabled  = defaults.object(forKey: Self.notifEnabledKey) as? Bool ?? false
         notifBypassDND         = defaults.object(forKey: Self.notifDNDKey)     as? Bool ?? false
         notifAllowedApps       = defaults.stringArray(forKey: Self.notifAppsKey) ?? []
+        rememberLastWidget     = defaults.object(forKey: Self.rememberWidgetKey) as? Bool ?? false
+        defaultWidgetRaw       = defaults.string(forKey: Self.defaultWidgetKey) ?? IslandModule.nowPlaying.rawValue
+    }
+
+    // MARK: – Last widget memory
+
+    func saveLastWidget(_ module: IslandModule) {
+        guard rememberLastWidget else { return }
+        UserDefaults.standard.set(module.rawValue, forKey: Self.lastWidgetKey)
+    }
+
+    var resolvedStartWidget: IslandModule {
+        if rememberLastWidget,
+           let raw = UserDefaults.standard.string(forKey: Self.lastWidgetKey),
+           let mod = IslandModule(rawValue: raw) { return mod }
+        return defaultWidget
+    }
+
+    func setRememberLastWidget(_ on: Bool) {
+        rememberLastWidget = on
+        UserDefaults.standard.set(on, forKey: Self.rememberWidgetKey)
     }
 
     // Ordered visible modules (excludes .settings — ExpandedIslandView appends it separately)

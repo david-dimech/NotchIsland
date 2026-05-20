@@ -8,6 +8,8 @@ class SystemStatsManager: ObservableObject {
     private var updateTimer: Timer?
     private var prevCPUInfo: processor_info_array_t?
     private var prevCPUInfoCount: mach_msg_type_number_t = 0
+    private var prevNetBytes: (up: UInt64, down: UInt64) = (0, 0)
+    private var prevNetTime: Date = .distantPast
 
     init() {
         update()
@@ -27,6 +29,8 @@ class SystemStatsManager: ObservableObject {
         var next = SystemStats()
         next.cpuUsage     = cpuUsage()
         next.memoryUsage  = memoryUsage()
+        next.diskUsage    = diskUsage()
+        (next.netUpBps, next.netDownBps) = networkThroughput()
         (next.batteryLevel, next.isCharging, next.hasBattery) = batteryInfo()
         DispatchQueue.main.async { self.stats = next }
     }
@@ -81,6 +85,54 @@ class SystemStatsManager: ObservableObject {
         let used      = Double(vmStats.active_count + vmStats.wire_count) * pageSize
         let total     = Double(ProcessInfo.processInfo.physicalMemory)
         return min(used / total, 1.0)
+    }
+
+    // MARK: – Disk
+
+    private func diskUsage() -> Double {
+        guard let attrs = try? FileManager.default.attributesOfFileSystem(forPath: "/"),
+              let total = attrs[.systemSize]     as? Int64, total > 0,
+              let free  = attrs[.systemFreeSize] as? Int64 else { return 0 }
+        return Double(total - free) / Double(total)
+    }
+
+    // MARK: – Network throughput (bytes/sec over all en* interfaces)
+
+    private func networkThroughput() -> (up: Double, down: Double) {
+        var ifaddrsPtr: UnsafeMutablePointer<ifaddrs>?
+        guard getifaddrs(&ifaddrsPtr) == 0, let ifaddrsPtr else { return (0, 0) }
+        defer { freeifaddrs(ifaddrsPtr) }
+
+        var totalUp:   UInt64 = 0
+        var totalDown: UInt64 = 0
+        var cursor = ifaddrsPtr
+        while true {
+            let ifa = cursor.pointee
+            if ifa.ifa_addr?.pointee.sa_family == UInt8(AF_LINK) {
+                let name = String(cString: ifa.ifa_name)
+                // Include en (ethernet/wifi), utun (VPN) — skip loopback
+                if name.hasPrefix("en") || name.hasPrefix("utun") {
+                    if let data = ifa.ifa_data?.assumingMemoryBound(to: if_data.self) {
+                        totalUp   += UInt64(data.pointee.ifi_obytes)
+                        totalDown += UInt64(data.pointee.ifi_ibytes)
+                    }
+                }
+            }
+            guard let next = ifa.ifa_next else { break }
+            cursor = next
+        }
+
+        let now      = Date()
+        let elapsed  = now.timeIntervalSince(prevNetTime)
+        let prevUp   = prevNetBytes.up
+        let prevDown = prevNetBytes.down
+        prevNetBytes = (totalUp, totalDown)
+        prevNetTime  = now
+
+        guard elapsed > 0, prevUp > 0 || prevDown > 0 else { return (0, 0) }
+        let up   = Double(totalUp   > prevUp   ? totalUp   - prevUp   : 0) / elapsed
+        let down = Double(totalDown > prevDown ? totalDown - prevDown : 0) / elapsed
+        return (up, down)
     }
 
     // MARK: – Battery (via IORegistry — avoids IOKit.ps SPM linkage issues)

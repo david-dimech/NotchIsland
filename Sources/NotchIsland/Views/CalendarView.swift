@@ -13,6 +13,7 @@ struct CalendarView: View {
     @State private var quickText = ""
     @State private var quickFeedback: QuickFeedback? = nil
     @FocusState private var quickFocused: Bool
+    @State private var detailEvent: GCalEvent? = nil
 
     enum QuickFeedback { case success, failure }
 
@@ -23,13 +24,20 @@ struct CalendarView: View {
     }
 
     var body: some View {
-        VStack(spacing: 0) {
-            header
-            Divider().background(Color.white.opacity(0.07))
-            content
-            quickAddBar
+        ZStack {
+            VStack(spacing: 0) {
+                header
+                Divider().background(Color.white.opacity(0.07))
+                content
+                quickAddBar
+            }
+            if let ev = detailEvent {
+                eventDetailOverlay(ev)
+                    .transition(.move(edge: .bottom).combined(with: .opacity))
+            }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .animation(.spring(response: 0.28, dampingFraction: 0.82), value: detailEvent?.id)
     }
 
     // MARK: – Header
@@ -167,9 +175,15 @@ struct CalendarView: View {
                         ForEach(groupedGoogleEvents) { group in
                             dateSectionHeader(group.date)
                             ForEach(group.events) { ev in
-                                EventRow(title: ev.title, start: ev.start, end: ev.end,
-                                         isAllDay: ev.isAllDay, source: .google,
-                                         hangoutLink: ev.hangoutLink)
+                                EventRow(
+                                    title: ev.title, start: ev.start, end: ev.end,
+                                    isAllDay: ev.isAllDay, source: .google,
+                                    hangoutLink: ev.hangoutLink,
+                                    onTap: ev.htmlLink.flatMap(URL.init(string:)).map { url in
+                                        { NSWorkspace.shared.open(url) }
+                                    },
+                                    onLongPress: { withAnimation { detailEvent = ev } }
+                                )
                                 if ev.id != group.events.last?.id {
                                     Divider().background(Color.white.opacity(0.07)).padding(.leading, 18)
                                 }
@@ -288,6 +302,114 @@ struct CalendarView: View {
         }
     }
 
+    // MARK: – Event detail overlay
+
+    private func eventDetailOverlay(_ ev: GCalEvent) -> some View {
+        VStack(spacing: 0) {
+            // Toolbar
+            HStack(spacing: 8) {
+                Button { withAnimation { detailEvent = nil } } label: {
+                    Image(systemName: "chevron.left")
+                        .font(.system(size: 10, weight: .semibold))
+                        .foregroundStyle(.white.opacity(0.6))
+                        .frame(width: 22, height: 22).contentShape(Rectangle())
+                }.buttonStyle(.plain)
+
+                VStack(alignment: .leading, spacing: 1) {
+                    Text(ev.title)
+                        .font(.system(size: 10, weight: .semibold))
+                        .foregroundStyle(.white).lineLimit(1)
+                    Text(eventTimeLabel(ev))
+                        .font(.system(size: 8)).foregroundStyle(.white.opacity(0.4))
+                }
+                Spacer()
+                if let link = ev.hangoutLink, let url = URL(string: link) {
+                    Button {
+                        NSWorkspace.shared.open(url)
+                    } label: {
+                        Text("Join")
+                            .font(.system(size: 9, weight: .semibold)).foregroundStyle(.white)
+                            .padding(.horizontal, 7).padding(.vertical, 3)
+                            .background(RoundedRectangle(cornerRadius: 5).fill(Color.green.opacity(0.75)))
+                    }.buttonStyle(.plain)
+                }
+                if let link = ev.htmlLink, let url = URL(string: link) {
+                    Button { NSWorkspace.shared.open(url) } label: {
+                        Image(systemName: "arrow.up.right.square")
+                            .font(.system(size: 11)).foregroundStyle(.blue.opacity(0.7))
+                    }.buttonStyle(.plain)
+                }
+            }
+            .padding(.horizontal, 10).padding(.vertical, 6)
+
+            Divider().background(Color.white.opacity(0.07))
+
+            ScrollView(.vertical, showsIndicators: false) {
+                VStack(alignment: .leading, spacing: 8) {
+                    if let loc = ev.location {
+                        detailRow(icon: "mappin.and.ellipse", text: loc)
+                    }
+                    if let desc = ev.description, !desc.isEmpty {
+                        detailRow(icon: "text.alignleft", text: desc)
+                    }
+                    if !ev.attendees.isEmpty {
+                        VStack(alignment: .leading, spacing: 4) {
+                            Label("\(ev.attendees.count) guests", systemImage: "person.2")
+                                .font(.system(size: 9, weight: .semibold))
+                                .foregroundStyle(.white.opacity(0.4))
+                            ForEach(ev.attendees.prefix(6), id: \.email) { a in
+                                attendeeRow(a)
+                            }
+                            if ev.attendees.count > 6 {
+                                Text("+\(ev.attendees.count - 6) more")
+                                    .font(.system(size: 8)).foregroundStyle(.white.opacity(0.3))
+                            }
+                        }
+                    }
+                }
+                .padding(.horizontal, 12).padding(.vertical, 8)
+            }
+        }
+        .background(Color(white: 0.06))
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+
+    private func detailRow(icon: String, text: String) -> some View {
+        HStack(alignment: .top, spacing: 6) {
+            Image(systemName: icon).font(.system(size: 9)).foregroundStyle(.white.opacity(0.4))
+                .frame(width: 12, alignment: .center).padding(.top, 1)
+            Text(text).font(.system(size: 10)).foregroundStyle(.white.opacity(0.7))
+                .lineLimit(4).fixedSize(horizontal: false, vertical: true)
+        }
+    }
+
+    private func attendeeRow(_ a: GCalEventAttendee) -> some View {
+        HStack(spacing: 6) {
+            Circle().fill(statusColor(a.status)).frame(width: 5, height: 5)
+            Text(a.name.isEmpty ? a.email : a.name)
+                .font(.system(size: 9)).foregroundStyle(.white.opacity(0.65)).lineLimit(1)
+            if a.isOrganizer {
+                Text("organizer").font(.system(size: 7)).foregroundStyle(.white.opacity(0.3))
+            }
+        }
+    }
+
+    private func statusColor(_ status: String) -> Color {
+        switch status {
+        case "accepted":  return .green
+        case "declined":  return .red
+        case "tentative": return .orange
+        default:          return .white.opacity(0.25)
+        }
+    }
+
+    private func eventTimeLabel(_ ev: GCalEvent) -> String {
+        if ev.isAllDay { return "All day" }
+        let f = DateFormatter(); f.dateFormat = "EEE, MMM d · HH:mm"
+        let g = DateFormatter(); g.dateFormat = "HH:mm"
+        return "\(f.string(from: ev.start)) – \(g.string(from: ev.end))"
+    }
+
     // MARK: – Date label
 
     private var dateLabel: String {
@@ -309,6 +431,8 @@ private struct EventRow: View {
     let isAllDay: Bool
     let source: CalSource
     let hangoutLink: String?
+    var onTap:       (() -> Void)? = nil
+    var onLongPress: (() -> Void)? = nil
 
     private static let timeFmt: DateFormatter = {
         let f = DateFormatter(); f.dateFormat = "HH:mm"; return f
@@ -344,7 +468,20 @@ private struct EventRow: View {
                 }
             }
             Spacer()
+            if onLongPress != nil {
+                Image(systemName: "info.circle")
+                    .font(.system(size: 9)).foregroundStyle(.white.opacity(0.2))
+            }
         }
         .padding(.horizontal, 12).padding(.vertical, 5)
+        .contentShape(Rectangle())
+        .gesture(
+            onLongPress != nil
+                ? LongPressGesture(minimumDuration: 0.4)
+                    .onEnded { _ in onLongPress?() }
+                    .exclusively(before: TapGesture().onEnded { onTap?() })
+                : nil
+        )
+        .onTapGesture { if onLongPress == nil { onTap?() } }
     }
 }

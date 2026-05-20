@@ -172,6 +172,33 @@ struct SettingsView: View {
                         .padding(.top, 6)
                 }
 
+                // MARK: Island behaviour section
+                Section {
+                    SettingsToggleRow(
+                        icon: "clock.arrow.circlepath",
+                        label: "Remember last widget",
+                        isOn: Binding(
+                            get:  { settings.rememberLastWidget },
+                            set:  { settings.setRememberLastWidget($0) }
+                        )
+                    )
+                    .listRowBackground(Color.clear)
+                    .listRowSeparator(.hidden)
+                    .listRowInsets(.init(top: 2, leading: 12, bottom: 2, trailing: 12))
+
+                    if !settings.rememberLastWidget {
+                        DefaultWidgetRow(settings: settings)
+                            .listRowBackground(Color.clear)
+                            .listRowSeparator(.hidden)
+                            .listRowInsets(.init(top: 2, leading: 12, bottom: 2, trailing: 12))
+                    }
+                } header: {
+                    Text("ISLAND BEHAVIOUR")
+                        .font(.system(size: 9, weight: .semibold))
+                        .foregroundColor(.white.opacity(0.35))
+                        .padding(.top, 6)
+                }
+
                 // MARK: General section
                 Section {
                     SettingsToggleRow(
@@ -312,6 +339,46 @@ private struct TodoistTokenRow: View {
                     .foregroundColor(.white.opacity(0.35))
             }
             .buttonStyle(.plain)
+        }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 8)
+        .background(RoundedRectangle(cornerRadius: 8, style: .continuous).fill(Color.white.opacity(0.06)))
+    }
+}
+
+// MARK: – Default widget picker
+
+private struct DefaultWidgetRow: View {
+    @ObservedObject var settings: SettingsManager
+
+    private var pickable: [IslandModule] {
+        IslandModule.allCases.filter { $0 != .settings }
+    }
+
+    var body: some View {
+        HStack(spacing: 12) {
+            Image(systemName: settings.defaultWidget.icon)
+                .font(.system(size: 13))
+                .foregroundColor(.white.opacity(0.6))
+                .frame(width: 20)
+            Text("Default widget")
+                .font(.system(size: 13, weight: .medium))
+                .foregroundColor(.white)
+            Spacer()
+            Picker("", selection: Binding(
+                get:  { settings.defaultWidgetRaw },
+                set:  { settings.defaultWidget = IslandModule(rawValue: $0) ?? .nowPlaying }
+            )) {
+                ForEach(pickable, id: \.rawValue) { mod in
+                    HStack(spacing: 4) {
+                        Image(systemName: mod.icon)
+                        Text(mod.displayName)
+                    }.tag(mod.rawValue)
+                }
+            }
+            .pickerStyle(.menu)
+            .labelsHidden()
+            .frame(width: 140)
         }
         .padding(.horizontal, 10)
         .padding(.vertical, 8)
