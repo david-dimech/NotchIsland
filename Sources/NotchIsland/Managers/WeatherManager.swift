@@ -81,8 +81,10 @@ class WeatherManager: ObservableObject {
         comps.queryItems = [
             .init(name: "latitude",         value: String(lat)),
             .init(name: "longitude",        value: String(lon)),
-            .init(name: "current",          value: "temperature_2m,apparent_temperature,weathercode"),
+            .init(name: "current",          value: "temperature_2m,apparent_temperature,weathercode,windspeed_10m"),
+            .init(name: "hourly",           value: "temperature_2m,precipitation_probability,windspeed_10m,weathercode"),
             .init(name: "temperature_unit", value: "celsius"),
+            .init(name: "windspeed_unit",   value: "kmh"),
             .init(name: "forecast_days",    value: "1"),
         ]
         guard let url = comps.url else { return }
@@ -99,14 +101,50 @@ class WeatherManager: ObservableObject {
                 return
             }
             let feels = current["apparent_temperature"] as? Double ?? temp
+            let wind  = current["windspeed_10m"]        as? Double ?? 0
+
+            // Hourly arrays — 24 entries indexed 0…23 (hour of day)
+            let hourly        = json["hourly"] as? [String: Any] ?? [:]
+            let hourlyTemps   = hourly["temperature_2m"]           as? [Double] ?? []
+            let hourlyPrecip  = hourly["precipitation_probability"] as? [Int]    ?? []
+            let hourlyWind    = hourly["windspeed_10m"]             as? [Double] ?? []
+            let hourlyCodes   = hourly["weathercode"]               as? [Int]    ?? []
+
+            let nowHour = Calendar.current.component(.hour, from: Date())
+
+            // Morning 6–11 (representative 9h), Afternoon 12–17 (15h), Evening 18–23 (21h)
+            let periods: [(label: String, repHour: Int, start: Int)] = [
+                ("Morning",   9, 6),
+                ("Afternoon", 15, 12),
+                ("Evening",   21, 18),
+            ]
+
+            let segments: [WeatherSegment] = periods.map { p in
+                let h    = min(p.repHour, hourlyTemps.count - 1)
+                let t    = h < hourlyTemps.count  ? hourlyTemps[h]  : temp
+                let pr   = h < hourlyPrecip.count ? hourlyPrecip[h] : 0
+                let wd   = h < hourlyWind.count   ? hourlyWind[h]   : wind
+                let wc   = h < hourlyCodes.count  ? hourlyCodes[h]  : code
+                return WeatherSegment(
+                    label:       p.label,
+                    sfSymbol:    WeatherInfo.sfSymbolFor(code: wc),
+                    temperature: t,
+                    precipPct:   pr,
+                    windKmh:     wd,
+                    isPast:      nowHour >= p.start + 6   // period is over after its last hour
+                )
+            }
+
             DispatchQueue.main.async {
                 self.weather = WeatherInfo(
                     temperature: temp,
                     feelsLike:   feels,
                     weatherCode: code,
+                    windSpeed:   wind,
                     city:        city,
                     isLoaded:    true,
-                    isError:     false
+                    isError:     false,
+                    segments:    segments
                 )
             }
         }.resume()

@@ -147,14 +147,25 @@ struct CalendarEventInfo: Identifiable {
     var endDate: Date
 }
 
+struct WeatherSegment {
+    let label: String          // "Morning", "Afternoon", "Evening"
+    let sfSymbol: String
+    let temperature: Double
+    let precipPct: Int         // precipitation probability 0–100
+    let windKmh: Double
+    let isPast: Bool           // period already elapsed today
+}
+
 // Weather (Open-Meteo WMO weather codes)
 struct WeatherInfo {
     var temperature: Double = 0
     var feelsLike: Double = 0
     var weatherCode: Int = 0
+    var windSpeed: Double = 0  // current wind km/h
     var city: String = ""
     var isLoaded: Bool = false
     var isError: Bool = false
+    var segments: [WeatherSegment] = []
 
     var condition: String {
         switch weatherCode {
@@ -172,8 +183,10 @@ struct WeatherInfo {
         }
     }
 
-    var sfSymbol: String {
-        switch weatherCode {
+    var sfSymbol: String { WeatherInfo.sfSymbolFor(code: weatherCode) }
+
+    static func sfSymbolFor(code: Int) -> String {
+        switch code {
         case 0:        return "sun.max.fill"
         case 1:        return "sun.haze.fill"
         case 2:        return "cloud.sun.fill"

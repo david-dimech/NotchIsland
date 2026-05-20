@@ -224,31 +224,34 @@ private struct GmailRow: View {
     }
 
     var body: some View {
-        Button(action: onTap) {
-            HStack(alignment: .top, spacing: 8) {
-                Circle()
-                    .fill(message.isUnread ? Color.blue : Color.clear)
-                    .frame(width: 5, height: 5).padding(.top, 5)
+        HStack(alignment: .top, spacing: 8) {
+            Circle()
+                .fill(message.isUnread ? Color.blue : Color.clear)
+                .frame(width: 5, height: 5).padding(.top, 5)
 
-                VStack(alignment: .leading, spacing: 2) {
-                    HStack {
-                        Text(message.fromName)
-                            .font(.system(size: 11, weight: message.isUnread ? .semibold : .regular))
-                            .foregroundStyle(message.isUnread ? .white : .white.opacity(0.65))
-                            .lineLimit(1)
-                        Spacer()
-                        Text(timeLabel)
-                            .font(.system(size: 9)).foregroundStyle(.white.opacity(0.3))
-                    }
-                    Text(message.subject)
-                        .font(.system(size: 10, weight: message.isUnread ? .medium : .regular))
-                        .foregroundStyle(message.isUnread ? .white.opacity(0.9) : .white.opacity(0.5))
+            VStack(alignment: .leading, spacing: 2) {
+                HStack {
+                    Text(message.fromName)
+                        .font(.system(size: 11, weight: message.isUnread ? .semibold : .regular))
+                        .foregroundStyle(message.isUnread ? .white : .white.opacity(0.65))
                         .lineLimit(1)
+                    Spacer()
+                    Text(timeLabel)
+                        .font(.system(size: 9)).foregroundStyle(.white.opacity(0.3))
                 }
+                Text(message.subject)
+                    .font(.system(size: 10, weight: message.isUnread ? .medium : .regular))
+                    .foregroundStyle(message.isUnread ? .white.opacity(0.9) : .white.opacity(0.5))
+                    .lineLimit(1)
             }
-            .padding(.horizontal, 12).padding(.vertical, 6).contentShape(Rectangle())
         }
-        .buttonStyle(.plain)
-        .simultaneousGesture(LongPressGesture(minimumDuration: 0.35).onEnded { _ in onLongPress() })
+        .padding(.horizontal, 12).padding(.vertical, 6).contentShape(Rectangle())
+        // Long press → preview; short tap → open in browser.
+        // Using exclusive gestures so only one fires per interaction.
+        .gesture(
+            LongPressGesture(minimumDuration: 0.4)
+                .onEnded { _ in onLongPress() }
+                .exclusively(before: TapGesture().onEnded { onTap() })
+        )
     }
 }
