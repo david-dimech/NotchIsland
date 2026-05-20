@@ -3,3 +3,7 @@
 *.xcuserdata
 *.xcworkspace/xcuserdata
 Package.resolved
+
+# Contains real Google OAuth credentials — keep out of version control.
+# Copy Secrets.swift.template → Secrets.swift and fill in your values.
+Sources/NotchIsland/Secrets.swift

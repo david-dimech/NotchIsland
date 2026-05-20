@@ -12,6 +12,7 @@ let package = Package(
                 .linkedFramework("IOKit"),
                 .linkedFramework("AppKit"),
                 .linkedFramework("EventKit"),
+                .linkedFramework("CoreMIDI"),
                 .unsafeFlags([
                     "-Xlinker", "-sectcreate",
                     "-Xlinker", "__TEXT",

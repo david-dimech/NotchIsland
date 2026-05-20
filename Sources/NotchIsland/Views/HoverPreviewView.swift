@@ -43,6 +43,23 @@ struct HoverPreviewView: View {
     private var rows: [Row] {
         var out: [Row] = []
 
+        // Todoist focus task shown first — most actionable context
+        if !SettingsManager.shared.todoistAPIToken.isEmpty,
+           let task = viewModel.todoistManager.focusTask {
+            let suffix: String
+            if task.isOverdue {
+                suffix = " · overdue"
+            } else if let d = task.dueDate, task.hasDueTime {
+                let f = DateFormatter(); f.dateFormat = "HH:mm"
+                suffix = " · \(f.string(from: d))"
+            } else {
+                suffix = ""
+            }
+            let priorityColor: Color = task.priority == 4 ? .red : task.priority == 3 ? .orange : .blue
+            out.append(Row(icon: "checkmark.circle", color: priorityColor,
+                           text: task.content + suffix))
+        }
+
         if viewModel.nowPlaying.isPlaying, !viewModel.nowPlaying.title.isEmpty {
             out.append(Row(icon: "music.note", color: .green,
                            text: viewModel.nowPlaying.title))

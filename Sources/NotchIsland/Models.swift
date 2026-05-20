@@ -26,10 +26,11 @@ struct SystemStats {
 }
 
 struct TimerState {
-    var isRunning: Bool = false
-    var duration: TimeInterval = 25 * 60
-    var remaining: TimeInterval = 25 * 60
-    var isBreak: Bool = false
+    var isRunning:     Bool         = false
+    var duration:      TimeInterval = 25 * 60
+    var remaining:     TimeInterval = 25 * 60
+    var isBreak:       Bool         = false
+    var justFinished:  Bool         = false   // true during the 5-second alert window
 
     var progress: Double {
         guard duration > 0 else { return 0 }
@@ -50,6 +51,10 @@ enum IslandModule: String, Equatable, Hashable, CaseIterable {
     case timer       = "timer"
     case weather     = "weather"
     case bluetooth   = "bluetooth"
+    case music       = "music"
+    case todoist     = "todoist"
+    case gmail       = "gmail"
+    case settings    = "settings"   // always last; not user-reorderable
 
     var displayName: String {
         switch self {
@@ -59,6 +64,10 @@ enum IslandModule: String, Equatable, Hashable, CaseIterable {
         case .timer:       return "Timer"
         case .weather:     return "Weather"
         case .bluetooth:   return "Bluetooth"
+        case .music:       return "Music Tools"
+        case .todoist:     return "Todoist"
+        case .gmail:       return "Gmail"
+        case .settings:    return "Settings"
         }
     }
 
@@ -70,17 +79,35 @@ enum IslandModule: String, Equatable, Hashable, CaseIterable {
         case .timer:       return "timer"
         case .weather:     return "cloud.sun.fill"
         case .bluetooth:   return "bluetooth"
+        case .music:       return "music.quarternote.3"
+        case .todoist:     return "checkmark.circle"
+        case .gmail:       return "envelope"
+        case .settings:    return "gear"
         }
     }
 }
 
 enum IslandState: Equatable {
+    /// Physical notch footprint — idle or passively-active.
     case compact
+    /// Proactive alert bubble: +15 % wider, +10 % taller than notch.
+    case alert(AlertInfo)
+    /// Reactive hover peek: medium panel shown when a background task is active.
+    case peek
+    /// Full modular dashboard.
     case expanded(IslandModule)
 
     var isExpanded: Bool {
         if case .expanded = self { return true }
         return false
+    }
+
+    /// True for any state that has grown beyond the raw notch footprint.
+    var isRaised: Bool {
+        switch self {
+        case .compact:                  return false
+        case .alert, .peek, .expanded:  return true
+        }
     }
 }
 
@@ -98,6 +125,10 @@ let kIslandCornerRadius: CGFloat   = 14  // fixed, not height/2
 // Computed dynamically in IslandViewModel from the real notch dimensions.
 let kHoverWidthMultiplier:  CGFloat = 1.15
 let kHoverHeightMultiplier: CGFloat = 1.20
+
+// Bottom corner radius for the compact notch shape — derived from the SVG:
+// corner box ≈ 15.56 / 306 (inner notch width) × kNotchWidth ≈ 12.7 pt
+let kNotchBottomRadius: CGFloat = 12
 
 // Calendar event
 struct CalendarEventInfo: Identifiable {
@@ -155,6 +186,10 @@ struct BTDeviceInfo: Identifiable {
     var name: String
     var batteryPercent: Int   // 0–100
 }
+
+// Peek state — medium panel, deliberately between hover preview and full expanded.
+let kPeekExpandedWidth:  CGFloat = 340
+let kPeekExpandedHeight: CGFloat = 88
 
 // Legacy aliases kept so manager / view code compiles during refactor
 let kPillCompactWidth  = kNotchWidth

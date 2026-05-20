@@ -10,7 +10,7 @@ struct ExpandedIslandView: View {
 
     @ObservedObject private var settings = SettingsManager.shared
 
-    private var modules: [IslandModule] { settings.enabledModules }
+    private var modules: [IslandModule] { settings.enabledModules + [.settings] }
 
     // Crisp spring for page snapping — feels like a card flicking into place
     private let snapSpring = Animation.interpolatingSpring(
@@ -21,12 +21,6 @@ struct ExpandedIslandView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            pageIndicator
-                .padding(.top, 8)
-                .padding(.bottom, 6)
-
-            Divider().background(Color.white.opacity(0.08))
-
             GeometryReader { geo in
                 let w = geo.size.width
 
@@ -42,6 +36,11 @@ struct ExpandedIslandView: View {
                 .offset(x: -CGFloat(safeIndex) * w + dragOffset)
             }
             .clipped()
+
+            Divider().background(Color.white.opacity(0.08))
+
+            pageIndicator
+                .padding(.vertical, 5)
         }
         .onChange(of: modules.count) { _, count in
             // Clamp index when a module is hidden from settings
@@ -67,22 +66,33 @@ struct ExpandedIslandView: View {
     // MARK: – Page indicator
 
     private var pageIndicator: some View {
-        HStack(spacing: 5) {
+        HStack(spacing: 4) {
             ForEach(0..<modules.count, id: \.self) { i in
-                if i == moduleIndex {
-                    Capsule()
-                        .fill(Color.white)
-                        .frame(width: 18, height: 5)
-                } else {
-                    Circle()
-                        .fill(Color.white.opacity(0.28))
-                        .frame(width: 5, height: 5)
-                        .contentShape(Circle())
-                        .onTapGesture { switchTo(i) }
+                let active = i == moduleIndex
+                let mod    = modules[i]
+                Button { switchTo(i) } label: {
+                    HStack(spacing: active ? 4 : 0) {
+                        Image(systemName: mod.icon)
+                            .font(.system(size: 8, weight: active ? .semibold : .regular))
+                            .foregroundStyle(active ? .white : .white.opacity(0.35))
+                        if active {
+                            Text(mod.displayName)
+                                .font(.system(size: 9, weight: .semibold))
+                                .foregroundStyle(.white)
+                                .lineLimit(1)
+                                .transition(.opacity.combined(with: .scale(scale: 0.85)))
+                        }
+                    }
+                    .padding(.horizontal, active ? 7 : 5)
+                    .padding(.vertical, 3)
+                    .background(
+                        Capsule().fill(active ? Color.white.opacity(0.18) : Color.clear)
+                    )
                 }
+                .buttonStyle(.plain)
             }
         }
-        .animation(.easeInOut(duration: 0.18), value: moduleIndex)
+        .animation(.spring(response: 0.28, dampingFraction: 0.78), value: moduleIndex)
     }
 
     // MARK: – Module views
@@ -96,6 +106,10 @@ struct ExpandedIslandView: View {
         case .timer:       TimerView(viewModel: viewModel)
         case .weather:     WeatherView(viewModel: viewModel)
         case .bluetooth:   BluetoothView(viewModel: viewModel)
+        case .music:       MusicView()
+        case .todoist:     TodoistView(viewModel: viewModel)
+        case .gmail:       GmailView(viewModel: viewModel)
+        case .settings:    IslandSettingsView()
         }
     }
 

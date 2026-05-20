@@ -4,8 +4,10 @@ struct TimerView: View {
     @ObservedObject var viewModel: IslandViewModel
     private var t: TimerState { viewModel.timerState }
 
+    @State private var alertPulse: Bool = false
+
     private let presets: [(label: String, minutes: Int)] = [
-        ("5m", 5), ("15m", 15), ("25m", 25), ("45m", 45)
+        ("1m", 1), ("5m", 5), ("15m", 15), ("25m", 25), ("45m", 45)
     ]
 
     var body: some View {
@@ -24,13 +26,23 @@ struct TimerView: View {
                     Text(t.displayString)
                         .font(.system(size: 16, weight: .bold, design: .monospaced))
                         .foregroundColor(.white)
-                    Text(t.isBreak ? "Break" : "Focus")
+                    Text(t.justFinished ? "Done!" : (t.isBreak ? "Break" : "Focus"))
                         .font(.system(size: 8, weight: .medium))
-                        .foregroundColor(.white.opacity(0.45))
+                        .foregroundColor(t.justFinished ? .red : .white.opacity(0.45))
                         .textCase(.uppercase)
                 }
             }
             .frame(width: 64, height: 64)
+            .scaleEffect(alertPulse ? 1.08 : 1.0)
+            .onChange(of: t.justFinished) { _, finished in
+                if finished {
+                    withAnimation(.easeInOut(duration: 0.45).repeatForever(autoreverses: true)) {
+                        alertPulse = true
+                    }
+                } else {
+                    withAnimation(.easeOut(duration: 0.2)) { alertPulse = false }
+                }
+            }
 
             // Controls column
             VStack(alignment: .leading, spacing: 10) {
@@ -75,8 +87,11 @@ struct TimerView: View {
             .frame(maxWidth: .infinity, alignment: .leading)
         }
         .padding(.horizontal, 20)
-        .frame(maxWidth: .infinity, maxHeight: .infinity)   // fill + centre in page slot
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
-    private var ringColor: Color { t.isBreak ? .green : .orange }
+    private var ringColor: Color {
+        if t.justFinished { return .red }
+        return t.isBreak ? .green : .orange
+    }
 }

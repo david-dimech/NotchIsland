@@ -45,6 +45,9 @@ class ContextManager: ObservableObject {
            id.contains("fantastical") ||
            id.contains("busycal")   { return .calendar }
 
+        // Todoist → show todoist
+        if id.contains("todoist") { return .todoist }
+
         // Productivity / focus → show timer
         if id.contains("notion")   ||
            id.contains("obsidian") ||

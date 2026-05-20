@@ -25,30 +25,45 @@ class BluetoothManager: ObservableObject {
     // MARK: – IORegistry scan
 
     private static func scanDevices() -> [BTDeviceInfo] {
+        // Scan both driver classes — deduplicate by name afterwards.
+        // IOBluetoothHIDDriver: keyboards, mice, trackpads.
+        // IOHIDDevice filtered to Bluetooth transport: AirPods, headsets, some newer devices.
+        let combined = scan(serviceClass: "IOBluetoothHIDDriver", requireBTTransport: false)
+                     + scan(serviceClass: "IOHIDDevice",          requireBTTransport: true)
+
+        var seen = Set<String>()
+        return combined.filter { seen.insert($0.name).inserted }
+    }
+
+    private static func scan(serviceClass: String, requireBTTransport: Bool) -> [BTDeviceInfo] {
         var result: [BTDeviceInfo] = []
         var iter: io_iterator_t = 0
 
-        // IOBluetoothHIDDriver covers AirPods, keyboards, mice, trackpads, etc.
-        let matching = IOServiceMatching("IOBluetoothHIDDriver")
-        guard IOServiceGetMatchingServices(kIOMainPortDefault, matching, &iter) == KERN_SUCCESS else {
-            return result
-        }
+        guard IOServiceGetMatchingServices(
+            kIOMainPortDefault, IOServiceMatching(serviceClass), &iter
+        ) == KERN_SUCCESS else { return result }
         defer { IOObjectRelease(iter) }
 
         var service = IOIteratorNext(iter)
         while service != 0 {
-            defer { IOObjectRelease(service) }
+            defer { IOObjectRelease(service); service = IOIteratorNext(iter) }
 
-            let name = cfProp(service, "Product") as? String ?? "Unknown Device"
+            if requireBTTransport {
+                let transport = cfProp(service, "Transport") as? String ?? ""
+                guard transport == "Bluetooth" else { continue }
+            }
 
-            // Different drivers expose different keys
-            let pct: Int? = cfProp(service, "BatteryPercent") as? Int
-                         ?? cfProp(service, "DeviceBatteryPercent") as? Int
+            guard let name = cfProp(service, "Product") as? String,
+                  !name.isEmpty else { continue }
+
+            // Battery keys (in preference order — all are 0–100 %).
+            let pct: Int? = (cfProp(service, "BatteryPercent")      as? Int)
+                         ?? (cfProp(service, "DeviceBatteryPercent") as? Int)
+                         ?? (cfProp(service, "BatteryLevel")         as? Int)
 
             if let p = pct {
                 result.append(BTDeviceInfo(name: name, batteryPercent: p))
             }
-            service = IOIteratorNext(iter)
         }
         return result
     }

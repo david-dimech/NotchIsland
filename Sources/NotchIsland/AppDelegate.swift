@@ -19,6 +19,12 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             name: NSApplication.didChangeScreenParametersNotification,
             object: nil
         )
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(openSettings),
+            name: .openSettingsWindow,
+            object: nil
+        )
     }
 
     @objc private func repositionPanel() {
@@ -36,17 +42,21 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
         let menu = NSMenu()
 
-        let modules: [(String, String, Int)] = [
-            ("Media",     "1", 0),
-            ("Calendar",  "2", 1),
-            ("Battery",   "3", 2),
-            ("Timer",     "4", 3),
-            ("Weather",   "5", 4),
-            ("Bluetooth", "6", 5),
+        let modules: [(title: String, key: String, mod: IslandModule)] = [
+            ("Media",       "1", .nowPlaying),
+            ("Calendar",    "2", .calendar),
+            ("Battery",     "3", .systemStats),
+            ("Timer",       "4", .timer),
+            ("Weather",     "5", .weather),
+            ("Bluetooth",   "6", .bluetooth),
+            ("Music Tools", "7", .music),
+            ("Todoist",     "8", .todoist),
+            ("Gmail",       "9", .gmail),
         ]
-        for (title, key, _) in modules {
-            let item = NSMenuItem(title: title, action: #selector(showModule(_:)), keyEquivalent: key)
-            item.tag = modules.firstIndex(where: { $0.0 == title })!
+        for entry in modules {
+            let item = NSMenuItem(title: entry.title, action: #selector(showModule(_:)), keyEquivalent: entry.key)
+            // Store rawValue in representedObject for reliable lookup independent of allCases order
+            item.representedObject = entry.mod.rawValue
             menu.addItem(item)
         }
 
@@ -59,10 +69,8 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     @objc private func showModule(_ sender: NSMenuItem) {
-        let all = IslandModule.allCases
-        let idx = sender.tag
-        guard idx < all.count else { return }
-        let mod = all[idx]
+        guard let raw = sender.representedObject as? String,
+              let mod = IslandModule(rawValue: raw) else { return }
         Task { @MainActor in IslandViewModel.shared.toggle(mod) }
     }
 
