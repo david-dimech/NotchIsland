@@ -24,8 +24,20 @@ final class GmailManager: ObservableObject {
 
     var onNewMessage: ((GmailMessage) -> Void)?
     private var knownMessageIDs: Set<String>? = nil  // nil = first fetch, skip alerts
+    private var pollTimer: Timer?
 
     private static let log = Logger(subsystem: "com.notchisland.app", category: "Gmail")
+
+    // Call once after authProvider is set. Polls every 60 s for new messages.
+    func startPolling() {
+        pollTimer?.invalidate()
+        let t = Timer(timeInterval: 60, repeats: true) { [weak self] _ in
+            guard let self else { return }
+            Task { await self.fetchMessages() }
+        }
+        RunLoop.main.add(t, forMode: .common)
+        pollTimer = t
+    }
 
     func fetchMessages() async {
         guard let token = await authProvider?.validToken() else { return }

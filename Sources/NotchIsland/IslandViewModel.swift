@@ -55,12 +55,15 @@ class IslandViewModel: ObservableObject {
         // Wire Gmail to share Google auth tokens with Calendar
         gmailManager.authProvider = googleCalendarManager
 
-        // Fetch Gmail messages after successful Google auth or on launch if already authed
+        // Fetch Gmail messages after successful Google auth or on launch if already authed,
+        // then start the 60 s polling loop.
         NotificationCenter.default.addObserver(forName: .googleAuthDidComplete, object: nil, queue: .main) { [weak self] _ in
             Task { await self?.gmailManager.fetchMessages() }
+            self?.gmailManager.startPolling()
         }
         if googleCalendarManager.isAuthenticated {
             Task { await gmailManager.fetchMessages() }
+            gmailManager.startPolling()
         }
 
         // ── Data-manager subscriptions ──────────────────────────────────
