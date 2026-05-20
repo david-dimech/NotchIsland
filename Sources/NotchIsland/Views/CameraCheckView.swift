@@ -15,7 +15,7 @@ struct CameraCheckView: View {
             cameraContent
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .onAppear  { session.start() }
+        // Stop camera when leaving the widget — never runs in the background
         .onDisappear { session.stop() }
     }
 
@@ -29,16 +29,19 @@ struct CameraCheckView: View {
             Text("Camera Check")
                 .font(.system(size: 10, weight: .semibold))
                 .foregroundStyle(.white.opacity(0.7))
-            Circle()
-                .fill(session.isRunning ? Color.red : Color.clear)
-                .frame(width: 6, height: 6)
+            // Live recording dot — only shown while active
+            if session.isRunning {
+                Circle()
+                    .fill(Color.red)
+                    .frame(width: 6, height: 6)
+            }
             Spacer()
             if session.permissionDenied {
                 Text("Camera access denied")
                     .font(.system(size: 9))
                     .foregroundStyle(.orange.opacity(0.8))
-            } else {
-                Text(session.isRunning ? "Live" : "Starting…")
+            } else if session.isRunning {
+                Text("Live")
                     .font(.system(size: 9))
                     .foregroundStyle(.white.opacity(0.3))
             }
@@ -52,12 +55,12 @@ struct CameraCheckView: View {
     @ViewBuilder
     private var cameraContent: some View {
         if session.permissionDenied {
+            // Permission was denied — prompt user to fix in System Settings
             VStack(spacing: 8) {
                 Image(systemName: "camera.fill.badge.ellipsis")
                     .font(.system(size: 24)).foregroundStyle(.white.opacity(0.2))
-                Text("Allow camera access in System Settings")
-                    .font(.system(size: 10)).foregroundStyle(.white.opacity(0.4))
-                    .multilineTextAlignment(.center)
+                Text("Camera access denied")
+                    .font(.system(size: 10, weight: .medium)).foregroundStyle(.white.opacity(0.4))
                 Button("Open Privacy Settings") {
                     NSWorkspace.shared.open(URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Camera")!)
                 }
@@ -65,13 +68,40 @@ struct CameraCheckView: View {
                 .foregroundStyle(.blue).buttonStyle(.plain)
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
+
+        } else if !session.isRunning {
+            // Camera is off — require explicit user action to start
+            VStack(spacing: 10) {
+                Image(systemName: "camera.slash")
+                    .font(.system(size: 22))
+                    .foregroundStyle(.white.opacity(0.2))
+                Text("Camera is off")
+                    .font(.system(size: 10))
+                    .foregroundStyle(.white.opacity(0.35))
+                Button {
+                    session.start()
+                } label: {
+                    HStack(spacing: 5) {
+                        Image(systemName: "camera.fill")
+                            .font(.system(size: 10))
+                        Text("Turn on Camera")
+                            .font(.system(size: 10, weight: .semibold))
+                    }
+                    .foregroundStyle(.black)
+                    .padding(.horizontal, 14).padding(.vertical, 6)
+                    .background(Capsule().fill(Color.white.opacity(0.85)))
+                }
+                .buttonStyle(.plain)
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+
         } else {
+            // Live preview
             CameraPreview(session: session.captureSession)
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
                 .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
                 .padding(8)
                 .overlay(alignment: .bottomTrailing) {
-                    // Mirrored indicator
                     HStack(spacing: 3) {
                         Image(systemName: "arrow.left.and.right.righttriangle.left.righttriangle.right")
                             .font(.system(size: 7))
@@ -80,6 +110,18 @@ struct CameraCheckView: View {
                     }
                     .foregroundStyle(.white.opacity(0.25))
                     .padding(.trailing, 12).padding(.bottom, 12)
+                }
+                .overlay(alignment: .bottomLeading) {
+                    // Stop button
+                    Button {
+                        session.stop()
+                    } label: {
+                        Image(systemName: "camera.fill.badge.minus")
+                            .font(.system(size: 10))
+                            .foregroundStyle(.white.opacity(0.45))
+                            .padding(8)
+                    }
+                    .buttonStyle(.plain)
                 }
         }
     }
