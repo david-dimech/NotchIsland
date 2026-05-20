@@ -158,6 +158,39 @@ struct SettingsView: View {
                         .foregroundColor(.white.opacity(0.35))
                         .padding(.top, 6)
                 }
+
+                // MARK: Weather section
+                Section {
+                    WeatherCityRow(settings: settings)
+                        .listRowBackground(Color.clear)
+                        .listRowSeparator(.hidden)
+                        .listRowInsets(.init(top: 2, leading: 12, bottom: 2, trailing: 12))
+                } header: {
+                    Text("WEATHER")
+                        .font(.system(size: 9, weight: .semibold))
+                        .foregroundColor(.white.opacity(0.35))
+                        .padding(.top, 6)
+                }
+
+                // MARK: General section
+                Section {
+                    SettingsToggleRow(
+                        icon: "power",
+                        label: "Launch at login",
+                        isOn: Binding(
+                            get:  { settings.launchAtLogin },
+                            set:  { settings.launchAtLogin = $0 }
+                        )
+                    )
+                    .listRowBackground(Color.clear)
+                    .listRowSeparator(.hidden)
+                    .listRowInsets(.init(top: 2, leading: 12, bottom: 2, trailing: 12))
+                } header: {
+                    Text("GENERAL")
+                        .font(.system(size: 9, weight: .semibold))
+                        .foregroundColor(.white.opacity(0.35))
+                        .padding(.top, 6)
+                }
             }
             .listStyle(.plain)
             .scrollContentBackground(.hidden)
@@ -165,6 +198,39 @@ struct SettingsView: View {
         }
         .background(Color(red: 0.11, green: 0.11, blue: 0.12))
         .preferredColorScheme(.dark)
+    }
+}
+
+// MARK: – Weather city row
+
+private struct WeatherCityRow: View {
+    @ObservedObject var settings: SettingsManager
+    @State private var draft = ""
+    @FocusState private var focused: Bool
+
+    var body: some View {
+        HStack(spacing: 10) {
+            Image(systemName: "location.fill")
+                .font(.system(size: 12)).foregroundColor(.white.opacity(0.6)).frame(width: 20)
+            TextField("Auto-detect", text: $draft)
+                .font(.system(size: 12)).foregroundColor(.white).textFieldStyle(.plain).focused($focused)
+                .onSubmit { commit() }
+                .onAppear { draft = settings.weatherCity }
+            if !draft.isEmpty {
+                Button { draft = ""; commit() } label: {
+                    Image(systemName: "xmark.circle.fill")
+                        .font(.system(size: 11)).foregroundColor(.white.opacity(0.3))
+                }.buttonStyle(.plain)
+            }
+        }
+        .padding(.horizontal, 10).padding(.vertical, 8)
+        .background(RoundedRectangle(cornerRadius: 8, style: .continuous).fill(Color.white.opacity(0.06)))
+        .onChange(of: focused) { _, f in if !f { commit() } }
+    }
+
+    private func commit() {
+        settings.setWeatherCity(draft.trimmingCharacters(in: .whitespaces))
+        IslandViewModel.shared.weatherManager.refresh()
     }
 }
 

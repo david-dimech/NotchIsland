@@ -9,7 +9,7 @@ struct CalendarView: View {
     @ObservedObject var viewModel: IslandViewModel
     @ObservedObject private var cal:   CalendarManager
     @ObservedObject private var gcal:  GoogleCalendarManager
-    @State private var source: CalSource = .local
+    @State private var source: CalSource = .google
     @State private var quickText = ""
     @State private var quickFeedback: QuickFeedback? = nil
     @FocusState private var quickFocused: Bool
@@ -122,16 +122,37 @@ struct CalendarView: View {
                     VStack(spacing: 0) {
                         ForEach(viewModel.calendarEvents) { ev in
                             EventRow(title: ev.title, start: ev.startDate, end: ev.endDate,
-                                     source: .local, hangoutLink: nil)
+                                     isAllDay: false, source: .local, hangoutLink: nil)
                             if ev.id != viewModel.calendarEvents.last?.id {
                                 Divider().background(Color.white.opacity(0.07)).padding(.leading, 18)
                             }
                         }
                     }
+                    .padding(.vertical, 2)
                 }
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+
+    // MARK: – Google grouped by date
+
+    private struct EventGroup: Identifiable {
+        var id: Date { date }
+        let date: Date
+        let events: [GCalEvent]
+    }
+
+    private var groupedGoogleEvents: [EventGroup] {
+        let cal = Calendar.current
+        var dict: [Date: [GCalEvent]] = [:]
+        for ev in gcal.events {
+            let day = cal.startOfDay(for: ev.start)
+            dict[day, default: []].append(ev)
+        }
+        return dict.keys.sorted().map { day in
+            EventGroup(date: day, events: dict[day]!.sorted { $0.start < $1.start })
+        }
     }
 
     private var googleContent: some View {
@@ -143,15 +164,46 @@ struct CalendarView: View {
             } else {
                 ScrollView(.vertical, showsIndicators: false) {
                     VStack(spacing: 0) {
-                        ForEach(gcal.events) { ev in
-                            EventRow(title: ev.title, start: ev.start, end: ev.end,
-                                     source: .google, hangoutLink: ev.hangoutLink)
+                        ForEach(groupedGoogleEvents) { group in
+                            dateSectionHeader(group.date)
+                            ForEach(group.events) { ev in
+                                EventRow(title: ev.title, start: ev.start, end: ev.end,
+                                         isAllDay: ev.isAllDay, source: .google,
+                                         hangoutLink: ev.hangoutLink)
+                                if ev.id != group.events.last?.id {
+                                    Divider().background(Color.white.opacity(0.07)).padding(.leading, 18)
+                                }
+                            }
                         }
                     }
+                    .padding(.vertical, 2)
                 }
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+
+    private func dateSectionHeader(_ date: Date) -> some View {
+        let cal = Calendar.current
+        let label: String
+        if cal.isDateInToday(date)     { label = "Today" }
+        else if cal.isDateInTomorrow(date) { label = "Tomorrow" }
+        else {
+            let f = DateFormatter(); f.dateFormat = "EEE, MMM d"
+            label = f.string(from: date)
+        }
+        let isToday = cal.isDateInToday(date)
+        return HStack(spacing: 6) {
+            Text(label)
+                .font(.system(size: 9, weight: .semibold))
+                .foregroundStyle(isToday ? Color.blue : Color.white.opacity(0.4))
+            Rectangle()
+                .fill(isToday ? Color.blue.opacity(0.3) : Color.white.opacity(0.1))
+                .frame(height: 1)
+        }
+        .padding(.horizontal, 12)
+        .padding(.top, 8)
+        .padding(.bottom, 2)
     }
 
     private var notConnectedView: some View {
@@ -228,21 +280,11 @@ struct CalendarView: View {
                 }
             }
         case .local, .google:
-            // Create a local EK event starting in 1 hour for 1 hour as a placeholder
-            // The user enters free-form text — we use it as the title
-            let start = Date().addingTimeInterval(3600)
-            let end   = start.addingTimeInterval(3600)
-            _ = viewModel.calendarManager
-            // Just call create via EK — CalendarManager can add this method
-            // For now use a simple notification
-            alertBrief("Event '\(text)' — use Calendar app for details")
-        }
-    }
-
-    private func alertBrief(_ msg: String) {
-        withAnimation { quickFeedback = .failure }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 2) {
-            withAnimation { self.quickFeedback = nil }
+            let ok = viewModel.calendarManager.createEvent(title: text)
+            withAnimation { quickFeedback = ok ? .success : .failure }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
+                withAnimation { self.quickFeedback = nil }
+            }
         }
     }
 
@@ -264,24 +306,30 @@ private struct EventRow: View {
     let title: String
     let start: Date
     let end: Date
+    let isAllDay: Bool
     let source: CalSource
     let hangoutLink: String?
 
-    private static let fmt: DateFormatter = {
+    private static let timeFmt: DateFormatter = {
         let f = DateFormatter(); f.dateFormat = "HH:mm"; return f
     }()
+
+    private var timeLabel: String {
+        if isAllDay { return "All day" }
+        return "\(Self.timeFmt.string(from: start)) – \(Self.timeFmt.string(from: end))"
+    }
 
     var body: some View {
         HStack(alignment: .center, spacing: 10) {
             RoundedRectangle(cornerRadius: 2)
                 .fill(source == .google ? Color(red: 0.26, green: 0.52, blue: 0.96) : Color.blue)
-                .frame(width: 3, height: 28)
+                .frame(width: 3, height: 30)
 
-            VStack(alignment: .leading, spacing: 1) {
+            VStack(alignment: .leading, spacing: 2) {
                 Text(title)
                     .font(.system(size: 11, weight: .medium)).foregroundStyle(.white).lineLimit(1)
-                HStack(spacing: 4) {
-                    Text(Self.fmt.string(from: start))
+                HStack(spacing: 6) {
+                    Text(timeLabel)
                         .font(.system(size: 9)).foregroundStyle(.white.opacity(0.4))
                     if let link = hangoutLink {
                         Button {

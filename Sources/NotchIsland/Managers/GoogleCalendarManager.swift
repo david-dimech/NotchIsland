@@ -78,10 +78,10 @@ final class GoogleCalendarManager: ObservableObject {
     private let clientID     = Secrets.googleClientID
     private let clientSecret = Secrets.googleClientSecret
 
-    // Combined scope covering Calendar + Gmail
+    // Combined scope covering Calendar + Gmail (modify needed for archive / mark-read)
     private static let oauthScope = [
         "https://www.googleapis.com/auth/calendar.events",
-        "https://www.googleapis.com/auth/gmail.readonly",
+        "https://www.googleapis.com/auth/gmail.modify",
     ].joined(separator: " ")
 
     init() {

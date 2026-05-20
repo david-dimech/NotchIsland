@@ -30,6 +30,20 @@ struct AlertPreviewView: View {
 
             Spacer(minLength: 0)
 
+            if let url = alert.actionURL {
+                Button {
+                    NSWorkspace.shared.open(url)
+                    viewModel.alertManager.dismiss()
+                } label: {
+                    Text("Join")
+                        .font(.system(size: 9, weight: .semibold))
+                        .foregroundStyle(.white)
+                        .padding(.horizontal, 7).padding(.vertical, 3)
+                        .background(RoundedRectangle(cornerRadius: 5).fill(Color.green.opacity(0.75)))
+                }
+                .buttonStyle(.plain)
+            }
+
             Button {
                 viewModel.alertManager.dismiss()
             } label: {

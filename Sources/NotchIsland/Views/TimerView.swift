@@ -4,7 +4,10 @@ struct TimerView: View {
     @ObservedObject var viewModel: IslandViewModel
     private var t: TimerState { viewModel.timerState }
 
-    @State private var alertPulse: Bool = false
+    @State private var alertPulse:   Bool   = false
+    @State private var customText:   String = ""
+    @State private var customActive: Bool   = false
+    @FocusState private var customFocused: Bool
 
     private let presets: [(label: String, minutes: Int)] = [
         ("1m", 1), ("5m", 5), ("15m", 15), ("25m", 25), ("45m", 45)
@@ -46,23 +49,46 @@ struct TimerView: View {
 
             // Controls column
             VStack(alignment: .leading, spacing: 10) {
-                // Quick-set presets
+                // Quick-set presets + custom input
                 HStack(spacing: 5) {
                     ForEach(presets, id: \.minutes) { p in
-                        let active = Int(t.duration / 60) == p.minutes
-                        Button { viewModel.setTimerDuration(minutes: p.minutes) } label: {
+                        let active = !customActive && Int(t.duration / 60) == p.minutes
+                        Button {
+                            customActive = false; customText = ""
+                            viewModel.setTimerDuration(minutes: p.minutes)
+                        } label: {
                             Text(p.label)
                                 .font(.system(size: 10, weight: .semibold))
                                 .foregroundColor(active ? .white : .white.opacity(0.35))
-                                .padding(.horizontal, 7)
-                                .padding(.vertical, 3)
-                                .background(
-                                    RoundedRectangle(cornerRadius: 5, style: .continuous)
-                                        .fill(active ? Color.white.opacity(0.18) : Color.clear)
-                                )
+                                .padding(.horizontal, 7).padding(.vertical, 3)
+                                .background(RoundedRectangle(cornerRadius: 5, style: .continuous)
+                                    .fill(active ? Color.white.opacity(0.18) : Color.clear))
                         }
                         .buttonStyle(.plain)
                     }
+
+                    // Custom field
+                    HStack(spacing: 2) {
+                        TextField("…", text: $customText)
+                            .font(.system(size: 10, weight: .semibold, design: .monospaced))
+                            .foregroundColor(customActive ? .white : .white.opacity(0.35))
+                            .frame(width: customActive ? 26 : 16)
+                            .textFieldStyle(.plain)
+                            .multilineTextAlignment(.center)
+                            .focused($customFocused)
+                            .onSubmit { commitCustom() }
+                            .onChange(of: customText) { _, v in
+                                customText = String(v.filter(\.isNumber).prefix(3))
+                            }
+                        if customActive {
+                            Text("m").font(.system(size: 10)).foregroundColor(.white.opacity(0.5))
+                        }
+                    }
+                    .padding(.horizontal, 6).padding(.vertical, 3)
+                    .background(RoundedRectangle(cornerRadius: 5, style: .continuous)
+                        .fill(customActive ? Color.white.opacity(0.18) : Color.white.opacity(0.06)))
+                    .onTapGesture { customActive = true; customFocused = true }
+                    .animation(.easeInOut(duration: 0.15), value: customActive)
                 }
 
                 // Play / pause + reset
@@ -88,6 +114,14 @@ struct TimerView: View {
         }
         .padding(.horizontal, 20)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+
+    private func commitCustom() {
+        guard let mins = Int(customText), mins > 0 else {
+            customActive = false; customText = ""; return
+        }
+        viewModel.setTimerDuration(minutes: mins)
+        customFocused = false
     }
 
     private var ringColor: Color {

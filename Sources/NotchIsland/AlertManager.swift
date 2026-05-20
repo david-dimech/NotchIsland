@@ -3,17 +3,21 @@ import Foundation
 // MARK: – Alert model
 
 struct AlertInfo: Equatable, Identifiable {
-    let id:     UUID
-    let icon:   String   // SF Symbol name
-    let text:   String   // enforced ≤ 25 characters at init
-    let source: String   // display name of the originating app / subsystem
+    let id:        UUID
+    let icon:      String   // SF Symbol name
+    let text:      String   // enforced ≤ 25 characters at init
+    let source:    String   // display name of the originating app / subsystem
+    let actionURL: URL?     // optional join/open CTA shown as a button
 
-    init(icon: String, text: String, source: String) {
-        self.id     = UUID()
-        self.icon   = icon
-        self.text   = String(text.prefix(25))
-        self.source = source
+    init(icon: String, text: String, source: String, actionURL: URL? = nil) {
+        self.id        = UUID()
+        self.icon      = icon
+        self.text      = String(text.prefix(25))
+        self.source    = source
+        self.actionURL = actionURL
     }
+
+    static func == (lhs: AlertInfo, rhs: AlertInfo) -> Bool { lhs.id == rhs.id }
 }
 
 // MARK: – Manager
@@ -34,8 +38,8 @@ final class AlertManager: ObservableObject {
     // MARK: – Public API
 
     /// Enqueue a new alert. Immediately visible if the queue is empty.
-    func post(icon: String, text: String, source: String) {
-        queue.append(AlertInfo(icon: icon, text: text, source: source))
+    func post(icon: String, text: String, source: String, actionURL: URL? = nil) {
+        queue.append(AlertInfo(icon: icon, text: text, source: source, actionURL: actionURL))
         if current == nil { advance() }
     }
 

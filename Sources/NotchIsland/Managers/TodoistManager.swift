@@ -85,9 +85,11 @@ final class TodoistManager: ObservableObject {
     @Published var activeTab: TodoistTab = .today
 
     var onOverdueAlert: ((TodoistTask) -> Void)?
+    var onNewTask:     ((TodoistTask) -> Void)?
 
     private var refreshCancellable: AnyCancellable?
-    private var alertedIDs: Set<String> = []
+    private var alertedIDs:   Set<String>  = []
+    private var knownTaskIDs: Set<String>? = nil  // nil = first fetch, skip alerts
     private static let log = Logger(subsystem: "com.notchisland.app", category: "Todoist")
 
     // MARK: – Focus task (drives hover preview)
@@ -174,6 +176,19 @@ final class TodoistManager: ObservableObject {
             self.upcomingTasks = upcoming.sorted { ($0.dueDate ?? .distantFuture) < ($1.dueDate ?? .distantFuture) }
             self.inboxTasks    = inbox.sorted    { $0.priority > $1.priority }
             self.isLoading     = false
+
+            // Detect newly-appeared tasks (skip on first fetch to avoid flooding on launch)
+            let allFetched = Array(Set((today + upcoming + inbox).map(\.id)))
+                .compactMap { id in (today + upcoming + inbox).first { $0.id == id } }
+            let allIDs = Set(allFetched.map(\.id))
+            if let known = self.knownTaskIDs {
+                let newIDs = allIDs.subtracting(known)
+                for task in allFetched.filter({ newIDs.contains($0.id) }).prefix(3) {
+                    self.onNewTask?(task)
+                }
+            }
+            self.knownTaskIDs = allIDs
+
             self.fireOverdueAlerts()
         }
     }
@@ -192,6 +207,46 @@ final class TodoistManager: ObservableObject {
             var req = URLRequest(url: url); req.httpMethod = "POST"
             req.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
             _ = try? await URLSession.shared.data(for: req)
+        }
+    }
+
+    func updateTask(_ task: TodoistTask, priority: Int? = nil, dueString: String? = nil) {
+        // Optimistic: update the task in all lists immediately
+        func apply(_ t: TodoistTask) -> TodoistTask {
+            // Swift structs are immutable — rebuild with changed fields via JSON round-trip hack
+            // or just keep the original and refresh after API call
+            return t
+        }
+        let token = SettingsManager.shared.todoistAPIToken.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !token.isEmpty else { return }
+        Task {
+            guard let url = URL(string: "https://api.todoist.com/api/v1/tasks/\(task.id)") else { return }
+            var req = URLRequest(url: url)
+            req.httpMethod = "POST"
+            req.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+            req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+            var body: [String: Any] = [:]
+            if let p = priority   { body["priority"]   = p }
+            if let d = dueString  { body["due_string"] = d }
+            req.httpBody = try? JSONSerialization.data(withJSONObject: body)
+            let (_, resp) = (try? await URLSession.shared.data(for: req)) ?? (nil, nil)
+            Self.log.info("Todoist: updateTask \(task.id) → HTTP \((resp as? HTTPURLResponse)?.statusCode ?? -1)")
+            self.refreshAll()
+        }
+    }
+
+    func deleteTask(_ task: TodoistTask) {
+        todayTasks.removeAll    { $0.id == task.id }
+        upcomingTasks.removeAll { $0.id == task.id }
+        inboxTasks.removeAll    { $0.id == task.id }
+        let token = SettingsManager.shared.todoistAPIToken.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !token.isEmpty else { return }
+        Task {
+            guard let url = URL(string: "https://api.todoist.com/api/v1/tasks/\(task.id)") else { return }
+            var req = URLRequest(url: url); req.httpMethod = "DELETE"
+            req.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+            _ = try? await URLSession.shared.data(for: req)
+            Self.log.info("Todoist: deleted task \(task.id)")
         }
     }
 
@@ -252,8 +307,6 @@ final class TodoistManager: ObservableObject {
 
         guard let (data, resp) = try? await URLSession.shared.data(for: req),
               (resp as? HTTPURLResponse)?.statusCode == 200 else {
-            let body = String(data: (try? await URLSession.shared.data(for: req).0) ?? Data(), encoding: .utf8) ?? ""
-            let http  = try? await URLSession.shared.data(for: req)  // already fetched above — skip re-fetch
             Self.log.error("Todoist: fetchTasks(\(filter)) failed")
             return []
         }

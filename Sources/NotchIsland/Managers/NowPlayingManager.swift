@@ -1,5 +1,6 @@
 import AppKit
 import Darwin
+import ObjectiveC
 
 class NowPlayingManager: ObservableObject {
     @Published var info = NowPlayingInfo()
@@ -8,10 +9,12 @@ class NowPlayingManager: ObservableObject {
     private typealias RegisterFn    = @convention(c) (DispatchQueue) -> Void
     private typealias GetInfoFn     = @convention(c) (DispatchQueue, @escaping (NSDictionary?) -> Void) -> Void
     private typealias GetPlayingFn  = @convention(c) (DispatchQueue, @escaping (Bool) -> Void) -> Void
+    private typealias GetAppIDFn    = @convention(c) (DispatchQueue, @escaping (String?) -> Void) -> Void
     private typealias SendCommandFn = @convention(c) (Int, AnyObject?) -> Bool
 
     private var getInfo:    GetInfoFn?
     private var getPlaying: GetPlayingFn?
+    private var getAppID:   GetAppIDFn?
     private var sendCmd:    SendCommandFn?
 
     private let mrHandle: UnsafeMutableRawPointer?
@@ -59,6 +62,9 @@ class NowPlayingManager: ObservableObject {
         if let p = dlsym(h, "MRMediaRemoteGetNowPlayingApplicationIsPlaying") {
             getPlaying = unsafeBitCast(p, to: GetPlayingFn.self)
         }
+        if let p = dlsym(h, "MRMediaRemoteGetNowPlayingApplicationDisplayID") {
+            getAppID = unsafeBitCast(p, to: GetAppIDFn.self)
+        }
         if let p = dlsym(h, "MRMediaRemoteSendCommand") {
             sendCmd = unsafeBitCast(p, to: SendCommandFn.self)
         }
@@ -93,18 +99,25 @@ class NowPlayingManager: ObservableObject {
                 next.duration = raw["kMRMediaRemoteNowPlayingInfoDuration"]    as? TimeInterval ?? 0
                 next.elapsed  = raw["kMRMediaRemoteNowPlayingInfoElapsedTime"] as? TimeInterval ?? 0
 
-                // Artwork — MR may return NSData, NSImage, or a MRMediaRemoteArtwork object
+                // Artwork — MR may return Data, NSImage, or a MRMediaRemoteArtwork object.
+                // imageWithSize: takes a CGSize struct so must be called via objc_msgSend,
+                // not perform(_:with:) which only handles object pointer arguments.
                 let artRaw = raw["kMRMediaRemoteNowPlayingInfoArtworkData"]
                 if let data = artRaw as? Data {
                     next.artwork = NSImage(data: data)
                 } else if let img = artRaw as? NSImage {
                     next.artwork = img
-                } else if let obj = artRaw as AnyObject?,
-                          obj.responds(to: NSSelectorFromString("imageWithSize:")) {
-                    // MRMediaRemoteArtwork — call imageWithSize: via ObjC runtime
+                } else if let obj = artRaw as AnyObject? {
+                    // MRMediaRemoteArtwork.imageWithSize: takes a CGSize struct.
+                    // perform(_:with:) only handles object args; objc_msgSend is unavailable in
+                    // Swift directly, so we fetch it via dlsym at runtime.
                     let sel = NSSelectorFromString("imageWithSize:")
-                    let img = obj.perform(sel, with: NSValue(size: NSSize(width: 100, height: 100)))?.takeUnretainedValue() as? NSImage
-                    next.artwork = img
+                    if obj.responds(to: sel),
+                       let msgSendPtr = dlsym(dlopen(nil, RTLD_LAZY), "objc_msgSend") {
+                        typealias ImageWithSize = @convention(c) (AnyObject, Selector, CGSize) -> NSImage?
+                        let fn = unsafeBitCast(msgSendPtr, to: ImageWithSize.self)
+                        next.artwork = fn(obj, sel, CGSize(width: 300, height: 300))
+                    }
                 }
 
                 let rate = raw["kMRMediaRemoteNowPlayingInfoPlaybackRate"] as? Double ?? 0
@@ -122,6 +135,11 @@ class NowPlayingManager: ObservableObject {
                     next.isPlaying = as_.isPlaying
                     if let art = as_.artwork { next.artwork = art }
                 }
+            }
+
+            // Fetch source app bundle ID
+            self.getAppID?(.global()) { bundleID in
+                next.sourceBundleID = bundleID
             }
 
             // Cross-check the isPlaying flag with the dedicated MR call
@@ -226,6 +244,25 @@ class NowPlayingManager: ObservableObject {
         RunLoop.main.add(t, forMode: .common)
         pollTimer = t
     }
+
+    // MARK: – Open source app
+
+    func openSourceApp() {
+        // Use the detected bundle ID first; fall back to scanning running music apps
+        let bundleID = info.sourceBundleID
+            ?? Self.knownMusicApps.first { !NSRunningApplication.runningApplications(withBundleIdentifier: $0).isEmpty }
+        guard let id = bundleID,
+              let url = NSWorkspace.shared.urlForApplication(withBundleIdentifier: id) else { return }
+        NSWorkspace.shared.openApplication(at: url,
+                                           configuration: NSWorkspace.OpenConfiguration(),
+                                           completionHandler: nil)
+    }
+
+    private static let knownMusicApps = [
+        "com.spotify.client", "com.apple.Music",
+        "com.apple.iTunes", "com.tidal.desktop",
+        "com.deezer.Deezer", "tv.plex.player",
+    ]
 
     // MARK: – Transport controls
 

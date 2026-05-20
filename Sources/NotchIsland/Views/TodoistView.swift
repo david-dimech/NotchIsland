@@ -280,54 +280,105 @@ private struct TaskRow: View {
     let task: TodoistTask
     @ObservedObject var manager: TodoistManager
     @State private var completing = false
+    @State private var expanded   = false
 
     var body: some View {
-        HStack(spacing: 8) {
-            // Complete button
-            Button {
-                withAnimation(.easeOut(duration: 0.18)) { completing = true }
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.18) {
-                    manager.complete(task)
-                }
-            } label: {
-                ZStack {
-                    Circle()
-                        .strokeBorder(priorityColor.opacity(0.7), lineWidth: 1.5)
-                        .frame(width: 14, height: 14)
-                    if completing {
-                        Image(systemName: "checkmark")
-                            .font(.system(size: 7, weight: .bold))
-                            .foregroundStyle(priorityColor)
+        VStack(spacing: 0) {
+            // Main row
+            HStack(spacing: 8) {
+                Button {
+                    withAnimation(.easeOut(duration: 0.18)) { completing = true }
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.18) { manager.complete(task) }
+                } label: {
+                    ZStack {
+                        Circle()
+                            .strokeBorder(priorityColor.opacity(0.7), lineWidth: 1.5)
+                            .frame(width: 14, height: 14)
+                        if completing {
+                            Image(systemName: "checkmark")
+                                .font(.system(size: 7, weight: .bold)).foregroundStyle(priorityColor)
+                        }
                     }
                 }
+                .buttonStyle(.plain)
+
+                Text(task.content)
+                    .font(.system(size: 11))
+                    .foregroundStyle(task.isOverdue ? .red.opacity(0.9) : .white.opacity(0.85))
+                    .lineLimit(1).strikethrough(completing)
+
+                Spacer(minLength: 0)
+
+                if let dueDate = task.dueDate, task.hasDueTime {
+                    Text(timeString(dueDate))
+                        .font(.system(size: 9, design: .monospaced))
+                        .foregroundStyle(task.isOverdue ? .red.opacity(0.6) : .white.opacity(0.28))
+                }
+                if task.priority >= 3 {
+                    Circle().fill(priorityColor).frame(width: 5, height: 5)
+                }
             }
-            .buttonStyle(.plain)
+            .padding(.horizontal, 12).padding(.vertical, 4)
+            .contentShape(Rectangle())
+            .onTapGesture { withAnimation(.easeInOut(duration: 0.15)) { expanded.toggle() } }
 
-            Text(task.content)
-                .font(.system(size: 11))
-                .foregroundStyle(task.isOverdue ? .red.opacity(0.9) : .white.opacity(0.85))
-                .lineLimit(1)
-                .strikethrough(completing)
-
-            Spacer(minLength: 0)
-
-            if let dueDate = task.dueDate, task.hasDueTime {
-                Text(timeString(dueDate))
-                    .font(.system(size: 9, design: .monospaced))
-                    .foregroundStyle(task.isOverdue ? .red.opacity(0.6) : .white.opacity(0.28))
-            }
-
-            if task.priority >= 3 {
-                Circle().fill(priorityColor).frame(width: 5, height: 5)
+            // Inline edit bar — appears on tap
+            if expanded {
+                HStack(spacing: 6) {
+                    // Priority chips
+                    ForEach([4, 3, 2, 1], id: \.self) { p in
+                        Button {
+                            manager.updateTask(task, priority: p)
+                            withAnimation { expanded = false }
+                        } label: {
+                            Text("P\(5 - p)")
+                                .font(.system(size: 8, weight: .semibold))
+                                .foregroundStyle(chipColor(p))
+                                .padding(.horizontal, 5).padding(.vertical, 2)
+                                .background(Capsule().fill(chipColor(p).opacity(task.priority == p ? 0.25 : 0.08)))
+                        }
+                        .buttonStyle(.plain)
+                    }
+                    Divider().frame(height: 10).background(Color.white.opacity(0.15))
+                    // Reschedule chips
+                    scheduleChip("Today",  due: "today")
+                    scheduleChip("Tmrw",   due: "tomorrow")
+                    Spacer(minLength: 0)
+                    // Delete
+                    Button {
+                        withAnimation { expanded = false }
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) { manager.deleteTask(task) }
+                    } label: {
+                        Image(systemName: "trash")
+                            .font(.system(size: 9)).foregroundStyle(.red.opacity(0.55))
+                    }
+                    .buttonStyle(.plain)
+                }
+                .padding(.horizontal, 12).padding(.vertical, 4)
+                .background(Color.white.opacity(0.04))
+                .transition(.opacity.combined(with: .move(edge: .top)))
             }
         }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 4)
         .opacity(completing ? 0 : 1)
     }
 
-    private var priorityColor: Color {
-        switch task.priority {
+    private func scheduleChip(_ label: String, due: String) -> some View {
+        Button {
+            manager.updateTask(task, dueString: due)
+            withAnimation { expanded = false }
+        } label: {
+            Text(label)
+                .font(.system(size: 8, weight: .medium))
+                .foregroundStyle(.white.opacity(0.5))
+                .padding(.horizontal, 5).padding(.vertical, 2)
+                .background(Capsule().fill(Color.white.opacity(0.08)))
+        }
+        .buttonStyle(.plain)
+    }
+
+    private var priorityColor: Color { chipColor(task.priority) }
+    private func chipColor(_ p: Int) -> Color {
+        switch p {
         case 4: return .red
         case 3: return .orange
         case 2: return .blue

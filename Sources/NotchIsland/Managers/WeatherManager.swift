@@ -15,14 +15,39 @@ class WeatherManager: ObservableObject {
     deinit { refreshTimer?.invalidate() }
 
     func refresh() {
-        // Reset error state before retrying
         DispatchQueue.main.async { self.weather.isError = false }
-        fetchLocation { [weak self] lat, lon, city in
-            self?.fetchWeather(lat: lat, lon: lon, city: city)
+        let manualCity = SettingsManager.shared.weatherCity.trimmingCharacters(in: .whitespaces)
+        if manualCity.isEmpty {
+            fetchLocation { [weak self] lat, lon, city in self?.fetchWeather(lat: lat, lon: lon, city: city) }
+        } else {
+            geocode(city: manualCity) { [weak self] lat, lon in
+                if let lat, let lon {
+                    self?.fetchWeather(lat: lat, lon: lon, city: manualCity)
+                } else {
+                    DispatchQueue.main.async { self?.weather.isError = true }
+                }
+            }
         }
     }
 
     // MARK: – Private
+
+    private func geocode(city: String, completion: @escaping (Double?, Double?) -> Void) {
+        let encoded = city.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? city
+        guard let url = URL(string: "https://geocoding-api.open-meteo.com/v1/search?name=\(encoded)&count=1&language=en&format=json") else {
+            completion(nil, nil); return
+        }
+        URLSession.shared.dataTask(with: url) { data, _, _ in
+            guard let data,
+                  let json    = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+                  let results = json["results"] as? [[String: Any]],
+                  let first   = results.first,
+                  let lat     = first["latitude"]  as? Double,
+                  let lon     = first["longitude"] as? Double
+            else { completion(nil, nil); return }
+            completion(lat, lon)
+        }.resume()
+    }
 
     private func fetchLocation(completion: @escaping (Double, Double, String) -> Void) {
         guard let url = URL(string: "http://ip-api.com/json") else {

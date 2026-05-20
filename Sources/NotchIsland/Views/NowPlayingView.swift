@@ -26,39 +26,55 @@ struct NowPlayingView: View {
     // MARK: – Sub-views
 
     private var artwork: some View {
-        Group {
-            if let img = info.artwork {
-                Image(nsImage: img)
-                    .resizable()
-                    .aspectRatio(contentMode: .fill)
-            } else {
-                ZStack {
-                    RoundedRectangle(cornerRadius: 8, style: .continuous)
-                        .fill(Color.white.opacity(0.08))
-                    Image(systemName: "music.note")
-                        .font(.system(size: 16))
-                        .foregroundStyle(.white.opacity(0.3))
+        Button { viewModel.nowPlayingManager.openSourceApp() } label: {
+            Group {
+                if let img = info.artwork {
+                    Image(nsImage: img)
+                        .resizable()
+                        .aspectRatio(contentMode: .fill)
+                } else {
+                    ZStack {
+                        RoundedRectangle(cornerRadius: 8, style: .continuous)
+                            .fill(Color.white.opacity(0.08))
+                        Image(systemName: "music.note")
+                            .font(.system(size: 16))
+                            .foregroundStyle(.white.opacity(0.3))
+                    }
+                }
+            }
+            .frame(width: 52, height: 52)
+            .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+            .animation(.easeInOut(duration: 0.3), value: info.artwork != nil)
+            .overlay(alignment: .bottomTrailing) {
+                // Small app-launch hint
+                if info.sourceBundleID != nil || info.isPlaying {
+                    Image(systemName: "arrow.up.right.square.fill")
+                        .font(.system(size: 9))
+                        .foregroundStyle(.white.opacity(0.5))
+                        .padding(3)
                 }
             }
         }
-        .frame(width: 52, height: 52)
-        .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
-        .animation(.easeInOut(duration: 0.3), value: info.artwork != nil)
+        .buttonStyle(.plain)
     }
 
     private var trackMeta: some View {
-        VStack(alignment: .leading, spacing: 1) {
-            Text(info.title.isEmpty ? "Nothing Playing" : info.title)
-                .font(.system(size: 12, weight: .semibold))
-                .foregroundStyle(.white)
-                .lineLimit(1)
-            if !info.artist.isEmpty {
-                Text(info.artist)
-                    .font(.system(size: 10))
-                    .foregroundStyle(.white.opacity(0.5))
+        Button { viewModel.nowPlayingManager.openSourceApp() } label: {
+            VStack(alignment: .leading, spacing: 1) {
+                Text(info.title.isEmpty ? "Nothing Playing" : info.title)
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundStyle(.white)
                     .lineLimit(1)
+                if !info.artist.isEmpty {
+                    Text(info.artist)
+                        .font(.system(size: 10))
+                        .foregroundStyle(.white.opacity(0.5))
+                        .lineLimit(1)
+                }
             }
+            .contentShape(Rectangle())
         }
+        .buttonStyle(.plain)
     }
 
     private var timeRow: some View {

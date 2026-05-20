@@ -62,6 +62,24 @@ class CalendarManager: ObservableObject {
         fetchForSelectedDate()
     }
 
+    @discardableResult
+    func createEvent(title: String, minutesFromNow: Int = 60, durationMinutes: Int = 60) -> Bool {
+        let start = Date().addingTimeInterval(TimeInterval(minutesFromNow * 60))
+        let end   = start.addingTimeInterval(TimeInterval(durationMinutes * 60))
+        let event = EKEvent(eventStore: store)
+        event.title     = title
+        event.startDate = start
+        event.endDate   = end
+        event.calendar  = store.defaultCalendarForNewEvents
+        do {
+            try store.save(event, span: .thisEvent)
+            fetchForSelectedDate()
+            return true
+        } catch {
+            return false
+        }
+    }
+
     // Next event starting within the next 2 hours — used by hover preview
     var nextUpcoming: CalendarEventInfo? {
         let horizon = Date().addingTimeInterval(2 * 3600)

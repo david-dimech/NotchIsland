@@ -8,6 +8,7 @@ struct NowPlayingInfo: Equatable {
     var artwork: NSImage? = nil
     var duration: TimeInterval = 0
     var elapsed: TimeInterval = 0
+    var sourceBundleID: String? = nil   // e.g. "com.spotify.client"
 
     static func == (lhs: NowPlayingInfo, rhs: NowPlayingInfo) -> Bool {
         lhs.title == rhs.title &&
@@ -85,6 +86,14 @@ enum IslandModule: String, Equatable, Hashable, CaseIterable {
         case .settings:    return "gear"
         }
     }
+
+    // Taller for list-heavy modules that need room to show multiple rows.
+    var preferredExpandedHeight: CGFloat {
+        switch self {
+        case .todoist, .gmail, .calendar: return 280
+        default: return kIslandExpandedHeight
+        }
+    }
 }
 
 enum IslandState: Equatable {
@@ -118,7 +127,7 @@ enum IslandState: Equatable {
 let kNotchWidth: CGFloat        = 250   // compact — aligns with physical notch
 let kNotchHeight: CGFloat       = 38
 let kIslandExpandedWidth: CGFloat  = 380
-let kIslandExpandedHeight: CGFloat = 142
+let kIslandExpandedHeight: CGFloat = 160
 let kIslandCornerRadius: CGFloat   = 14  // fixed, not height/2
 
 // Hover preview grows 15% wider and 20% taller than the physical notch.
@@ -188,8 +197,8 @@ struct BTDeviceInfo: Identifiable {
 }
 
 // Peek state — medium panel, deliberately between hover preview and full expanded.
-let kPeekExpandedWidth:  CGFloat = 340
-let kPeekExpandedHeight: CGFloat = 88
+let kPeekExpandedWidth:  CGFloat = 380
+let kPeekExpandedHeight: CGFloat = 120
 
 // Legacy aliases kept so manager / view code compiles during refactor
 let kPillCompactWidth  = kNotchWidth
@@ -197,4 +206,4 @@ let kPillCompactHeight = kNotchHeight
 let kPillExpandedWidth  = kIslandExpandedWidth
 let kPillExpandedHeight = kIslandExpandedHeight
 let kWindowWidth: CGFloat  = 600
-let kWindowHeight: CGFloat = 220
+let kWindowHeight: CGFloat = 500

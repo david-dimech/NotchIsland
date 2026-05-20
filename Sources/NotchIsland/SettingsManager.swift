@@ -1,5 +1,6 @@
 import Foundation
 import Combine
+import ServiceManagement
 
 class SettingsManager: ObservableObject {
     static let shared = SettingsManager()
@@ -12,6 +13,29 @@ class SettingsManager: ObservableObject {
     @Published var todoistAPIToken:      String
     @Published var todoistAlertsEnabled: Bool
 
+    // Weather
+    @Published var weatherCity: String
+
+    // Launch at login
+    var launchAtLogin: Bool {
+        get {
+            if #available(macOS 13.0, *) {
+                return SMAppService.mainApp.status == .enabled
+            }
+            return false
+        }
+        set {
+            guard #available(macOS 13.0, *) else { return }
+            do {
+                if newValue { try SMAppService.mainApp.register() }
+                else        { try SMAppService.mainApp.unregister() }
+            } catch {
+                // ignore — user may need to grant permission in System Settings
+            }
+            objectWillChange.send()
+        }
+    }
+
     // Notification intercept
     @Published var notifInterceptEnabled: Bool
     @Published var notifBypassDND:        Bool
@@ -22,6 +46,7 @@ class SettingsManager: ObservableObject {
     private static let soundKey         = "ni.timerSound"
     private static let todoistTokenKey   = "ni.todoistToken"
     private static let todoistAlertKey   = "ni.todoistAlerts"
+    private static let weatherCityKey   = "ni.weatherCity"
     private static let notifEnabledKey  = "ni.notifIntercept"
     private static let notifDNDKey      = "ni.notifBypassDND"
     private static let notifAppsKey     = "ni.notifApps"
@@ -52,6 +77,7 @@ class SettingsManager: ObservableObject {
             hiddenModules = []
         }
 
+        weatherCity           = defaults.string(forKey: Self.weatherCityKey)   ?? ""
         timerSoundName        = defaults.string(forKey: Self.soundKey)        ?? "Glass"
         todoistAPIToken        = defaults.string(forKey: Self.todoistTokenKey)  ?? ""
         todoistAlertsEnabled   = defaults.object(forKey: Self.todoistAlertKey)  as? Bool ?? true
@@ -92,6 +118,11 @@ class SettingsManager: ObservableObject {
     func setTodoistAlerts(_ on: Bool) {
         todoistAlertsEnabled = on
         UserDefaults.standard.set(on, forKey: Self.todoistAlertKey)
+    }
+
+    func setWeatherCity(_ city: String) {
+        weatherCity = city
+        UserDefaults.standard.set(city, forKey: Self.weatherCityKey)
     }
 
     func setNotifIntercept(_ on: Bool) {

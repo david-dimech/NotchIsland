@@ -21,6 +21,11 @@ struct ExpandedIslandView: View {
 
     var body: some View {
         VStack(spacing: 0) {
+            // Wings: sit beside the physical notch — prev/next module navigation
+            wingsRow
+
+            Divider().background(Color.white.opacity(0.08))
+
             GeometryReader { geo in
                 let w = geo.size.width
 
@@ -60,6 +65,53 @@ struct ExpandedIslandView: View {
         .onChange(of: module) { _, m in
             guard let i = modules.firstIndex(of: m), i != moduleIndex else { return }
             withAnimation(snapSpring) { moduleIndex = i }
+        }
+    }
+
+    // MARK: – Wings row (flanks the physical notch)
+
+    private var wingsRow: some View {
+        HStack(spacing: 0) {
+            // Left wing — tap to go to previous module
+            wingContent(index: safeIndex - 1, isLeft: true)
+                .frame(maxWidth: .infinity, alignment: .leading)
+
+            // Notch gap — exactly matches the physical notch width
+            Spacer().frame(width: viewModel.notchWidth)
+
+            // Right wing — tap to go to next module
+            wingContent(index: safeIndex + 1, isLeft: false)
+                .frame(maxWidth: .infinity, alignment: .trailing)
+        }
+        .frame(height: viewModel.notchHeight)
+        .animation(.easeInOut(duration: 0.15), value: safeIndex)
+    }
+
+    @ViewBuilder
+    private func wingContent(index: Int, isLeft: Bool) -> some View {
+        if index >= 0, index < modules.count {
+            let mod = modules[index]
+            Button { switchTo(index) } label: {
+                HStack(spacing: 3) {
+                    if isLeft {
+                        Image(systemName: "chevron.left")
+                            .font(.system(size: 7, weight: .bold))
+                            .foregroundStyle(.white.opacity(0.18))
+                    }
+                    Image(systemName: mod.icon)
+                        .font(.system(size: 10))
+                        .foregroundStyle(.white.opacity(0.45))
+                    if !isLeft {
+                        Image(systemName: "chevron.right")
+                            .font(.system(size: 7, weight: .bold))
+                            .foregroundStyle(.white.opacity(0.18))
+                    }
+                }
+                .padding(.horizontal, isLeft ? 10 : 10)
+                .frame(height: viewModel.notchHeight)
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
         }
     }
 

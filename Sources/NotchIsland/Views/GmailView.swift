@@ -5,6 +5,10 @@ struct GmailView: View {
     @ObservedObject private var gmail:  GmailManager
     @ObservedObject private var gcal:   GoogleCalendarManager
 
+    @State private var previewMessage: GmailMessage? = nil
+    @State private var previewBody:    String?       = nil
+    @State private var loadingPreview: Bool          = false
+
     init(viewModel: IslandViewModel) {
         self.viewModel = viewModel
         self.gmail  = viewModel.gmailManager
@@ -12,12 +16,98 @@ struct GmailView: View {
     }
 
     var body: some View {
-        VStack(spacing: 0) {
-            header
-            Divider().background(Color.white.opacity(0.07))
-            content
+        ZStack {
+            VStack(spacing: 0) {
+                header
+                Divider().background(Color.white.opacity(0.07))
+                content
+            }
+            if let msg = previewMessage {
+                emailPreview(msg)
+                    .transition(.move(edge: .bottom).combined(with: .opacity))
+            }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .animation(.spring(response: 0.28, dampingFraction: 0.82), value: previewMessage?.id)
+    }
+
+    private func openPreview(_ msg: GmailMessage) {
+        previewMessage = msg
+        previewBody    = nil
+        loadingPreview = true
+        Task {
+            let body = await gmail.fetchBody(id: msg.id)
+            previewBody    = body
+            loadingPreview = false
+        }
+    }
+
+    // MARK: – Inline email preview
+
+    private func emailPreview(_ msg: GmailMessage) -> some View {
+        VStack(spacing: 0) {
+            // Toolbar
+            HStack(spacing: 8) {
+                Button { withAnimation { previewMessage = nil; previewBody = nil } } label: {
+                    Image(systemName: "chevron.left")
+                        .font(.system(size: 10, weight: .semibold))
+                        .foregroundStyle(.white.opacity(0.6))
+                        .frame(width: 22, height: 22)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+
+                VStack(alignment: .leading, spacing: 1) {
+                    Text(msg.subject)
+                        .font(.system(size: 10, weight: .semibold))
+                        .foregroundStyle(.white).lineLimit(1)
+                    Text(msg.fromName)
+                        .font(.system(size: 8))
+                        .foregroundStyle(.white.opacity(0.4)).lineLimit(1)
+                }
+                Spacer()
+                HStack(spacing: 10) {
+                    if msg.isUnread {
+                        previewAction("envelope.open", color: .white.opacity(0.5)) {
+                            Task { await gmail.markAsRead(id: msg.id) }
+                        }
+                    }
+                    previewAction("archivebox", color: .white.opacity(0.5)) {
+                        Task { await gmail.archive(id: msg.id) }
+                        withAnimation { previewMessage = nil }
+                    }
+                    previewAction("arrow.up.right.square", color: .blue.opacity(0.7)) {
+                        gmail.openMessage(id: msg.id)
+                    }
+                }
+            }
+            .padding(.horizontal, 10).padding(.vertical, 6)
+
+            Divider().background(Color.white.opacity(0.07))
+
+            // Body
+            if loadingPreview {
+                ProgressView().progressViewStyle(.circular).scaleEffect(0.6)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+            } else {
+                ScrollView(.vertical, showsIndicators: false) {
+                    Text(previewBody ?? msg.snippet)
+                        .font(.system(size: 10))
+                        .foregroundStyle(.white.opacity(0.75))
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(.horizontal, 12).padding(.vertical, 8)
+                }
+            }
+        }
+        .background(Color(white: 0.06))
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+
+    private func previewAction(_ icon: String, color: Color, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Image(systemName: icon).font(.system(size: 11))
+                .foregroundStyle(color)
+        }.buttonStyle(.plain)
     }
 
     // MARK: – Header
@@ -74,7 +164,11 @@ struct GmailView: View {
             ScrollView(.vertical, showsIndicators: false) {
                 VStack(spacing: 0) {
                     ForEach(gmail.messages) { msg in
-                        GmailRow(message: msg) { gmail.openMessage(id: msg.id) }
+                        GmailRow(
+                            message: msg, gmail: gmail,
+                            onTap:       { gmail.openMessage(id: msg.id) },
+                            onLongPress: { openPreview(msg) }
+                        )
                         if msg.id != gmail.messages.last?.id {
                             Divider().background(Color.white.opacity(0.06)).padding(.leading, 12)
                         }
@@ -111,38 +205,30 @@ struct GmailView: View {
 // MARK: – Row
 
 private struct GmailRow: View {
-    let message: GmailMessage
-    let onTap: () -> Void
+    let message:     GmailMessage
+    let gmail:       GmailManager
+    let onTap:       () -> Void
+    let onLongPress: () -> Void
 
-    private static let timeFormatter: DateFormatter = {
-        let f = DateFormatter()
-        f.doesRelativeDateFormatting = true
-        f.dateStyle = .none
-        f.timeStyle = .short
-        return f
+    private static let timeFmt: DateFormatter = {
+        let f = DateFormatter(); f.dateStyle = .none; f.timeStyle = .short; return f
     }()
-
-    private static let dateFormatter: DateFormatter = {
-        let f = DateFormatter()
-        f.dateFormat = "MMM d"
-        return f
+    private static let dateFmt: DateFormatter = {
+        let f = DateFormatter(); f.dateFormat = "MMM d"; return f
     }()
 
     private var timeLabel: String {
-        if Calendar.current.isDateInToday(message.date) {
-            return Self.timeFormatter.string(from: message.date)
-        }
-        return Self.dateFormatter.string(from: message.date)
+        Calendar.current.isDateInToday(message.date)
+            ? Self.timeFmt.string(from: message.date)
+            : Self.dateFmt.string(from: message.date)
     }
 
     var body: some View {
         Button(action: onTap) {
             HStack(alignment: .top, spacing: 8) {
-                // Unread dot
                 Circle()
                     .fill(message.isUnread ? Color.blue : Color.clear)
-                    .frame(width: 5, height: 5)
-                    .padding(.top, 5)
+                    .frame(width: 5, height: 5).padding(.top, 5)
 
                 VStack(alignment: .leading, spacing: 2) {
                     HStack {
@@ -152,23 +238,17 @@ private struct GmailRow: View {
                             .lineLimit(1)
                         Spacer()
                         Text(timeLabel)
-                            .font(.system(size: 9))
-                            .foregroundStyle(.white.opacity(0.3))
+                            .font(.system(size: 9)).foregroundStyle(.white.opacity(0.3))
                     }
                     Text(message.subject)
                         .font(.system(size: 10, weight: message.isUnread ? .medium : .regular))
                         .foregroundStyle(message.isUnread ? .white.opacity(0.9) : .white.opacity(0.5))
                         .lineLimit(1)
-                    Text(message.snippet)
-                        .font(.system(size: 9))
-                        .foregroundStyle(.white.opacity(0.28))
-                        .lineLimit(1)
                 }
             }
-            .padding(.horizontal, 12)
-            .padding(.vertical, 6)
-            .contentShape(Rectangle())
+            .padding(.horizontal, 12).padding(.vertical, 6).contentShape(Rectangle())
         }
         .buttonStyle(.plain)
+        .simultaneousGesture(LongPressGesture(minimumDuration: 0.35).onEnded { _ in onLongPress() })
     }
 }

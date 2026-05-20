@@ -42,13 +42,14 @@ class IslandViewModel: ObservableObject {
 
     var onSwipeEvent: ((CGFloat, NSEvent.Phase) -> Void)?
 
-    private var cancellables         = Set<AnyCancellable>()
-    private var countdownTimer:      AnyCancellable?
-    private var mouseMonitor:        Any?
-    private var localScrollMonitor:  Any?
-    private var midiFlashGeneration: Int = 0
-    private var alertReturnTask:     Task<Void, Never>?
-    private var alertInterruptedPeek = false
+    private var cancellables            = Set<AnyCancellable>()
+    private var countdownTimer:         AnyCancellable?
+    private var mouseMonitor:           Any?
+    private var localScrollMonitor:     Any?
+    private var midiFlashGeneration:    Int = 0
+    private var alertReturnTask:        Task<Void, Never>?
+    private var alertInterruptedPeek    = false
+    private var remindedEventKeys:      Set<String> = []
 
     init() {
         // Wire Gmail to share Google auth tokens with Calendar
@@ -109,7 +110,7 @@ class IslandViewModel: ObservableObject {
         // MIDI flash signal.
         midiManager.onEvent = { [weak self] in self?.triggerMIDIFlash() }
 
-        // Todoist: start polling + wire overdue alerts.
+        // Todoist: start polling + wire overdue alerts + new-task alerts.
         todoistManager.start()
         todoistManager.onOverdueAlert = { [weak self] task in
             self?.alertManager.post(
@@ -117,6 +118,19 @@ class IslandViewModel: ObservableObject {
                 text: task.content,
                 source: "Todoist"
             )
+        }
+        todoistManager.onNewTask = { [weak self] task in
+            self?.alertManager.post(
+                icon: "checkmark.circle.badge.plus",
+                text: task.content,
+                source: "Todoist"
+            )
+        }
+
+        // Gmail: new-message alerts (fires after first fetch when new IDs appear)
+        gmailManager.onNewMessage = { [weak self] msg in
+            let text = msg.subject.isEmpty ? msg.fromName : msg.subject
+            self?.alertManager.post(icon: "envelope.fill", text: text, source: msg.fromName)
         }
 
         // Notification interceptor: start if enabled, wire incoming banners.
@@ -169,6 +183,36 @@ class IslandViewModel: ObservableObject {
                 return nil
             }
             return event
+        }
+
+        // 15-minute calendar reminder check — runs every 60 s.
+        Timer.publish(every: 60, on: .main, in: .common)
+            .autoconnect()
+            .sink { [weak self] _ in self?.checkCalendarReminders() }
+            .store(in: &cancellables)
+    }
+
+    // MARK: – Calendar reminders
+
+    private func checkCalendarReminders() {
+        let now  = Date()
+        let soon = now.addingTimeInterval(15 * 60)
+
+        // Local EventKit events
+        for ev in calendarEvents {
+            let key = "\(ev.title)-\(Int(ev.startDate.timeIntervalSince1970))"
+            guard !remindedEventKeys.contains(key), ev.startDate > now, ev.startDate <= soon else { continue }
+            remindedEventKeys.insert(key)
+            alertManager.post(icon: "calendar", text: ev.title, source: "In 15 min")
+        }
+
+        // Google Calendar events
+        for ev in googleCalendarManager.events {
+            let key = "gcal-\(ev.id)"
+            guard !remindedEventKeys.contains(key), ev.start > now, ev.start <= soon else { continue }
+            remindedEventKeys.insert(key)
+            let meetURL = ev.hangoutLink.flatMap(URL.init(string:))
+            alertManager.post(icon: "calendar", text: ev.title, source: "In 15 min", actionURL: meetURL)
         }
     }
 
@@ -224,13 +268,10 @@ class IslandViewModel: ObservableObject {
 
     private func onHoverChanged(_ hovering: Bool) {
         if hovering {
-            // Only promote from pure idle — do not interrupt an alert or expanded state.
+            // Always promote to peek from idle — gives meaningful preview on every hover.
             guard case .compact = state else { return }
-            if hasActiveBackgroundTask {
-                withAnimation(Self.peekSpring) { state = .peek }
-                startClickOutsideMonitor()
-            }
-            // Non-task hover: isHovering = true is enough; IslandView renders HoverPreviewView.
+            withAnimation(Self.peekSpring) { state = .peek }
+            startClickOutsideMonitor()
         } else {
             if case .peek = state {
                 withAnimation(Self.collapseSpring) { state = .compact }
@@ -401,7 +442,7 @@ class IslandViewModel: ObservableObject {
         case .compact:  return (isHovering || isTimerWarning) ? hoverHeight : notchHeight
         case .alert:    return notchHeight * 1.10
         case .peek:     return kPeekExpandedHeight
-        case .expanded: return (kIslandExpandedHeight * expandedSizeMultiplier).rounded()
+        case .expanded(let mod): return (mod.preferredExpandedHeight * expandedSizeMultiplier).rounded()
         }
     }
 
