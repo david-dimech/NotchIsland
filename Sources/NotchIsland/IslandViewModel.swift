@@ -25,6 +25,9 @@ class IslandViewModel: ObservableObject {
     // Emails the user has not yet dismissed from the Glance notification area.
     @Published var pendingEmailNotifications: [GmailMessage] = []
 
+    // Set when the user taps a Mail Drop or Glance email to navigate to it in the Gmail widget.
+    @Published var pendingOpenEmailID: String? = nil
+
     // Pinch-to-resize scale for expanded island — persisted across restarts
     @Published var expandedSizeMultiplier: CGFloat = {
         let v = UserDefaults.standard.double(forKey: "ni.sizeMultiplier")
@@ -312,6 +315,11 @@ class IslandViewModel: ObservableObject {
         if !isHovering { stopClickOutsideMonitor() }
     }
 
+    func openEmailInGmailWidget(id: String) {
+        pendingOpenEmailID = id
+        expand(to: .gmail)
+    }
+
     func dismissPendingEmail(_ msg: GmailMessage) {
         pendingEmailNotifications.removeAll { $0.id == msg.id }
     }
@@ -328,14 +336,11 @@ class IslandViewModel: ObservableObject {
     }
 
     // The module to navigate to when the user taps the Glance or compact Notch.
+    // Priority: active timer → currently playing → user's configured default (last-used or explicit).
     var peekTargetModule: IslandModule {
         if timerState.isRunning { return .timer }
-        let context = contextManager.suggestedModule
-        // If context manager returns nowPlaying but nothing is playing, use the saved start widget
-        if context == .nowPlaying && !nowPlaying.isPlaying {
-            return SettingsManager.shared.resolvedStartWidget
-        }
-        return context
+        if nowPlaying.isPlaying { return .nowPlaying }
+        return SettingsManager.shared.resolvedStartWidget
     }
 
     // MARK: – Hover → Peek promotion

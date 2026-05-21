@@ -29,6 +29,22 @@ struct GmailView: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .animation(.spring(response: 0.28, dampingFraction: 0.82), value: previewMessage?.id)
+        .onChange(of: viewModel.pendingOpenEmailID) { _, emailID in
+            guard let id = emailID else { return }
+            viewModel.pendingOpenEmailID = nil
+            if let msg = gmail.messages.first(where: { $0.id == id }) {
+                withAnimation { openPreview(msg) }
+            }
+        }
+        .onAppear {
+            // Handle case where ID was set before this view appeared
+            if let id = viewModel.pendingOpenEmailID {
+                viewModel.pendingOpenEmailID = nil
+                if let msg = gmail.messages.first(where: { $0.id == id }) {
+                    openPreview(msg)
+                }
+            }
+        }
     }
 
     private func openPreview(_ msg: GmailMessage) {

@@ -77,7 +77,8 @@ struct PeekView: View {
             if viewModel.weather.isLoaded && !viewModel.nowPlaying.isPlaying { weatherRow }
         }
         .padding(.horizontal, 14)
-        .padding(.vertical, 8)
+        .padding(.top, viewModel.notchHeight + 4)   // clear the physical notch hardware
+        .padding(.bottom, 8)
     }
 
     private var hasSecondRow: Bool {
@@ -88,27 +89,38 @@ struct PeekView: View {
     private var pendingEmailsRow: some View {
         let msg = viewModel.pendingEmailNotifications[0]
         return HStack(spacing: 8) {
-            Image(systemName: "envelope.fill")
-                .font(.system(size: 10))
-                .foregroundStyle(.blue.opacity(0.8))
-            VStack(alignment: .leading, spacing: 1) {
-                Text(msg.fromName)
-                    .font(.system(size: 10, weight: .semibold))
-                    .foregroundStyle(.white).lineLimit(1)
-                Text(msg.subject)
-                    .font(.system(size: 9))
-                    .foregroundStyle(.white.opacity(0.5)).lineLimit(1)
+            // Tappable area → open that email inside the Gmail widget
+            Button {
+                viewModel.dismissPendingEmail(msg)
+                viewModel.openEmailInGmailWidget(id: msg.id)
+            } label: {
+                HStack(spacing: 8) {
+                    Image(systemName: "envelope.fill")
+                        .font(.system(size: 10))
+                        .foregroundStyle(.blue.opacity(0.8))
+                    VStack(alignment: .leading, spacing: 1) {
+                        Text(msg.fromName)
+                            .font(.system(size: 10, weight: .semibold))
+                            .foregroundStyle(.white).lineLimit(1)
+                        Text(msg.subject)
+                            .font(.system(size: 9))
+                            .foregroundStyle(.white.opacity(0.5)).lineLimit(1)
+                    }
+                    Spacer()
+                    // Badge for additional pending
+                    if viewModel.pendingEmailNotifications.count > 1 {
+                        Text("+\(viewModel.pendingEmailNotifications.count - 1)")
+                            .font(.system(size: 8, weight: .bold))
+                            .foregroundStyle(.white.opacity(0.5))
+                            .padding(.horizontal, 4).padding(.vertical, 1)
+                            .background(Capsule().fill(Color.white.opacity(0.12)))
+                    }
+                }
+                .contentShape(Rectangle())
             }
-            Spacer()
-            // Badge for additional pending
-            if viewModel.pendingEmailNotifications.count > 1 {
-                Text("+\(viewModel.pendingEmailNotifications.count - 1)")
-                    .font(.system(size: 8, weight: .bold))
-                    .foregroundStyle(.white.opacity(0.5))
-                    .padding(.horizontal, 4).padding(.vertical, 1)
-                    .background(Capsule().fill(Color.white.opacity(0.12)))
-            }
-            // Dismiss this email from the notification area
+            .buttonStyle(.plain)
+
+            // Dismiss only — does not navigate
             Button {
                 withAnimation { viewModel.dismissPendingEmail(msg) }
             } label: {

@@ -104,17 +104,11 @@ struct MailDropView: View {
             .shadow(color: accent.opacity(0.35), radius: 12, x: 0, y: 4)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .scaleEffect(appeared ? 1.0 : 0.92)
+        // Content fades in slightly after the island shape begins expanding downward,
+        // so the shape's own spring animation provides the "drop from notch" feel.
         .opacity(appeared ? 1.0 : 0.0)
         .onAppear {
-            withAnimation(.spring(response: 0.36, dampingFraction: 0.72)) {
-                appeared = true
-            }
-        }
-        .contentShape(Rectangle())
-        .onTapGesture {
-            viewModel.gmailManager.openMessage(id: message.id)
-            viewModel.dismissMailDrop()
+            withAnimation(.easeIn(duration: 0.18).delay(0.08)) { appeared = true }
         }
     }
 

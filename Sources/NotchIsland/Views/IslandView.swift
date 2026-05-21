@@ -97,13 +97,13 @@ struct IslandView: View {
     private func handleTap() {
         switch viewModel.state {
         case .compact:
-            viewModel.expand(to: viewModel.contextManager.suggestedModule)
+            viewModel.expand(to: viewModel.peekTargetModule)
         case .alert:
             viewModel.alertManager.clearAll()
             viewModel.expand(to: viewModel.contextManager.suggestedModule)
-        case .mailDrop:
+        case .mailDrop(let msg):
             viewModel.dismissMailDrop()
-            viewModel.expand(to: .gmail)
+            viewModel.openEmailInGmailWidget(id: msg.id)
         case .peek:
             viewModel.expand(to: viewModel.peekTargetModule)
         case .expanded:

@@ -234,7 +234,7 @@ struct BTDeviceInfo: Identifiable {
 
 // Peek state — medium panel, deliberately between hover preview and full expanded.
 let kPeekExpandedWidth:  CGFloat = 380
-let kPeekExpandedHeight: CGFloat = 120
+let kPeekExpandedHeight: CGFloat = 150
 
 // Legacy aliases kept so manager / view code compiles during refactor
 let kPillCompactWidth  = kNotchWidth
