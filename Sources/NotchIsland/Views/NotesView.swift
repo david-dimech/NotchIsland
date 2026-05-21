@@ -114,7 +114,7 @@ private struct MarkdownTextEditor: NSViewRepresentable {
         textView.isVerticallyResizable       = true
         textView.isHorizontallyResizable     = false
         textView.textContainer?.widthTracksTextView = true
-        textView.textContainer?.containerSize = NSSize(width: 0, height: .greatestFiniteMagnitude)
+        textView.textContainer?.containerSize = NSSize(width: 0, height: CGFloat.greatestFiniteMagnitude)
         textView.delegate                    = context.coordinator
         textView.isRichText                  = false
         textView.font                        = NSFont.systemFont(ofSize: fontSize)
