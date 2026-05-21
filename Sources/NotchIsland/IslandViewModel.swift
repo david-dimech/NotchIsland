@@ -515,7 +515,7 @@ class IslandViewModel: ObservableObject {
     var islandWidth: CGFloat {
         switch state {
         case .compact:   return (isHovering || isTimerWarning) ? hoverWidth  : notchWidth
-        case .alert:     return notchWidth * 1.15
+        case .alert:     return kIslandExpandedWidth   // same width as Mail Drop for consistency
         case .mailDrop:  return kIslandExpandedWidth
         case .peek:      return kPeekExpandedWidth
         case .expanded:  return (kIslandExpandedWidth * expandedSizeMultiplier).rounded()
@@ -525,7 +525,7 @@ class IslandViewModel: ObservableObject {
     var islandHeight: CGFloat {
         switch state {
         case .compact:   return (isHovering || isTimerWarning) ? hoverHeight : notchHeight
-        case .alert:     return notchHeight * 1.10
+        case .alert:     return notchHeight + 50   // 50 pt of visible content below physical notch
         case .mailDrop:  return kMailDropHeight
         case .peek:      return kPeekExpandedHeight
         case .expanded(let mod): return (mod.preferredExpandedHeight * expandedSizeMultiplier).rounded()
@@ -540,7 +540,7 @@ class IslandViewModel: ObservableObject {
         switch state {
         case .expanded:  return rect(islandWidth, islandHeight)
         case .peek:      return rect(kPeekExpandedWidth,   kPeekExpandedHeight)
-        case .alert:     return rect(notchWidth * 1.15,    notchHeight * 1.10)
+        case .alert:     return rect(kIslandExpandedWidth, notchHeight + 50)
         case .mailDrop:  return rect(kIslandExpandedWidth, kMailDropHeight)
         case .compact:   return rect(hoverWidth,           hoverHeight)
         }

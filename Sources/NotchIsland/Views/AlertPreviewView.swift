@@ -67,10 +67,13 @@ struct AlertPreviewView: View {
             .buttonStyle(.plain)
         }
         .padding(.horizontal, 12)
-        .padding(.vertical, 6)
+        // Top clears the physical notch hardware; the alert island extends 50 pt below it.
+        .padding(.top, viewModel.notchHeight + 4)
+        .padding(.bottom, 8)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         .transition(.asymmetric(
-            insertion: .scale(scale: 0.9).combined(with: .opacity),
-            removal: .scale(scale: 0.95).combined(with: .opacity)
+            insertion: .scale(scale: 0.9, anchor: .bottom).combined(with: .opacity),
+            removal: .scale(scale: 0.95, anchor: .bottom).combined(with: .opacity)
         ))
     }
 }

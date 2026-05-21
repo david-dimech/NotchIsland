@@ -59,7 +59,7 @@ struct IslandView: View {
     private var bottomRadius: CGFloat {
         switch viewModel.state {
         case .compact:            return kNotchBottomRadius
-        case .alert:              return kNotchBottomRadius
+        case .alert:              return kIslandCornerRadius  // panel, not a micro-bump
         case .mailDrop:           return kIslandCornerRadius
         case .peek:               return kIslandCornerRadius
         case .expanded:           return kIslandCornerRadius

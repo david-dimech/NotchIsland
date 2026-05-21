@@ -150,7 +150,7 @@ let kNotchWidth: CGFloat        = 250   // compact — aligns with physical notc
 let kNotchHeight: CGFloat       = 38
 let kIslandExpandedWidth: CGFloat  = 380
 let kIslandExpandedHeight: CGFloat = 160
-let kMailDropHeight: CGFloat       = 100  // Mail Drop — rich email notification card
+let kMailDropHeight: CGFloat       = 120  // Mail Drop — rich email notification card
 let kIslandCornerRadius: CGFloat   = 14  // fixed, not height/2
 
 // Hover preview grows 15% wider and 20% taller than the physical notch.

@@ -19,7 +19,9 @@ struct MailDropView: View {
             let accent = Color(hue: hue, saturation: 0.75, brightness: 1.0)
             let accentDim = Color(hue: hue, saturation: 0.55, brightness: 0.7)
 
-            ZStack(alignment: .leading) {
+            // topLeading keeps the content HStack pinned to top so padding can
+            // push it below the physical notch hardware (notchHeight deep).
+            ZStack(alignment: .topLeading) {
                 // Background gradient tint — derives from accent
                 LinearGradient(
                     colors: [accent.opacity(0.18), Color.black.opacity(0.0)],
@@ -77,9 +79,11 @@ struct MailDropView: View {
                     }
                 }
                 .padding(.horizontal, 12)
-                .padding(.vertical, 10)
+                // Top padding clears the physical notch hardware; bottom is visual breathing room.
+                .padding(.top, viewModel.notchHeight + 4)
+                .padding(.bottom, 10)
 
-                // Left accent bar
+                // Left accent bar — decorative, spans full height including the notch zone
                 RoundedRectangle(cornerRadius: 2)
                     .fill(LinearGradient(
                         colors: [accent, accentDim.opacity(0.4)],
