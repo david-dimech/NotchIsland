@@ -5,9 +5,13 @@ import AppKit
 // Runs via TimelineView so each frame is driven by wall-clock time — no Timer needed.
 struct ArtworkGradientView: View {
     let image: NSImage
+    // Extracted once at init — not recomputed on every body evaluation.
+    private let colors: [Color]
 
-    // Colors stay stable as long as the same artwork is displayed.
-    private var colors: [Color] { Self.extract(image) }
+    init(image: NSImage) {
+        self.image  = image
+        self.colors = Self.extract(image)
+    }
 
     var body: some View {
         TimelineView(.animation) { tl in

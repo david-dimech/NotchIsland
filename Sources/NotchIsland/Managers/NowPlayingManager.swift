@@ -152,7 +152,13 @@ class NowPlayingManager: ObservableObject {
                 DispatchQueue.main.async {
                     self.elapsedAtFetch = next.elapsed
                     self.fetchDate      = Date()
-                    self.info           = next
+                    // Reuse the existing NSImage reference when the track hasn't changed.
+                    // A new NSImage object (same pixels) causes SwiftUI to rebuild
+                    // ArtworkGradientView, which makes the gradient flash every poll cycle.
+                    if next.title == self.info.title, let existing = self.info.artwork {
+                        next.artwork = existing
+                    }
+                    self.info = next
                 }
                 Self.fetchArtworkFallbackIfNeeded(next) { [weak self] img in
                     DispatchQueue.main.async {
@@ -167,7 +173,10 @@ class NowPlayingManager: ObservableObject {
                 DispatchQueue.main.async {
                     self.elapsedAtFetch = next.elapsed
                     self.fetchDate      = Date()
-                    self.info           = next
+                    if next.title == self.info.title, let existing = self.info.artwork {
+                        next.artwork = existing
+                    }
+                    self.info = next
                 }
                 Self.fetchArtworkFallbackIfNeeded(next) { [weak self] img in
                     DispatchQueue.main.async {
